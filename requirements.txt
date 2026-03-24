@@ -1,0 +1,27 @@
+annotated-types==0.7.0
+anyio==4.12.1
+asgiref==3.11.1
+certifi==2026.2.25
+click==8.3.1
+colorama==0.4.6 ; sys_platform == 'win32'
+django==6.0.3
+django-ninja==1.6.2
+h11==0.16.0
+httptools==0.7.1
+idna==3.11
+psycopg==3.3.3
+psycopg-binary==3.3.3 ; implementation_name != 'pypy'
+pydantic==2.12.5
+pydantic-core==2.41.5
+python-dotenv==1.2.2
+pyyaml==6.0.3
+sentry-sdk==2.55.0
+sqlparse==0.5.5
+typing-extensions==4.15.0
+typing-inspection==0.4.2
+tzdata==2025.3 ; sys_platform == 'win32'
+urllib3==2.6.3
+uvicorn==0.42.0
+uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
+watchfiles==1.1.1
+websockets==16.0
