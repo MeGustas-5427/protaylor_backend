@@ -3,7 +3,18 @@ from __future__ import annotations
 from django.db.models import Prefetch
 from ninja.errors import HttpError
 
-from apps.catalog.models import Product, ProductCategory, ProductRelation, ProductSpecRow, ProductVariant
+from apps.catalog.models import (
+    Product,
+    ProductCategory,
+    ProductDownload,
+    ProductFeature,
+    ProductMedia,
+    ProductRelation,
+    ProductSpecGroup,
+    ProductSpecRow,
+    ProductUseCase,
+    ProductVariant,
+)
 from apps.catalog.schemas import (
     ProductCategoryDetailSchema,
     ProductDetailSchema,
@@ -63,15 +74,66 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
         )
         .select_related("category")
         .prefetch_related(
-            "variants",
-            "spec_groups__rows",
-            "features",
-            "use_cases",
-            "media_items__asset",
-            "downloads__asset",
+            Prefetch(
+                "variants",
+                queryset=ProductVariant.objects.filter(status=ProductVariant.Status.PUBLISHED).order_by(
+                    "sort_order", "id"
+                ),
+                to_attr="published_variants",
+            ),
+            Prefetch(
+                "spec_groups",
+                queryset=ProductSpecGroup.objects.order_by("sort_order", "id").prefetch_related(
+                    Prefetch(
+                        "rows",
+                        queryset=ProductSpecRow.objects.order_by("sort_order", "id"),
+                        to_attr="ordered_rows",
+                    )
+                ),
+                to_attr="ordered_spec_groups",
+            ),
+            Prefetch(
+                "features",
+                queryset=ProductFeature.objects.order_by("sort_order", "id"),
+                to_attr="ordered_features",
+            ),
+            Prefetch(
+                "use_cases",
+                queryset=ProductUseCase.objects.order_by("sort_order", "id"),
+                to_attr="ordered_use_cases",
+            ),
+            Prefetch(
+                "media_items",
+                queryset=ProductMedia.objects.select_related("asset").order_by("sort_order", "id"),
+                to_attr="ordered_media_items",
+            ),
+            Prefetch(
+                "downloads",
+                queryset=ProductDownload.objects.select_related("asset").order_by("sort_order", "id"),
+                to_attr="ordered_downloads",
+            ),
             Prefetch(
                 "product_relations",
-                queryset=ProductRelation.objects.select_related("related_product", "related_resource").order_by("sort_order", "id"),
+                queryset=ProductRelation.objects.filter(
+                    relation_type=ProductRelation.RelationType.RELATED_PRODUCT,
+                    related_product__isnull=False,
+                    related_product__status=Product.Status.PUBLISHED,
+                    related_product__is_canonical=True,
+                )
+                .select_related("related_product")
+                .order_by("sort_order", "id"),
+                to_attr="related_product_relations",
+            ),
+            Prefetch(
+                "product_relations",
+                queryset=ProductRelation.objects.filter(
+                    relation_type=ProductRelation.RelationType.RELATED_RESOURCE,
+                    related_resource__isnull=False,
+                    related_resource__status=Product.Status.PUBLISHED,
+                )
+                .select_related("related_resource")
+                .order_by("sort_order", "id"),
+                to_attr="related_resource_relations",
             ),
         )
         .first()
@@ -84,15 +146,9 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
         is_highlight=True,
     ).select_related("group").order_by("group__sort_order", "sort_order", "id")
 
-    related_products = [
-        relation.related_product
-        for relation in product.product_relations.all()
-        if relation.related_product_id
-    ]
+    related_products = [relation.related_product for relation in product.related_product_relations if relation.related_product]
     related_resources = [
-        relation.related_resource
-        for relation in product.product_relations.all()
-        if relation.related_resource_id
+        relation.related_resource for relation in product.related_resource_relations if relation.related_resource
     ]
 
     return ProductDetailSchema(
@@ -131,7 +187,7 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
                 summary=variant.summary or "",
                 is_default=variant.is_default,
             )
-            for variant in product.variants.filter(status=ProductVariant.Status.PUBLISHED).order_by("sort_order", "id")
+            for variant in product.published_variants
         ],
         quick_facts=[
             ProductSpecRowSchema(
@@ -156,18 +212,18 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
                         unit=row.unit or "",
                         is_highlight=row.is_highlight,
                     )
-                    for row in group.rows.all().order_by("sort_order", "id")
+                    for row in group.ordered_rows
                 ],
             )
-            for group in product.spec_groups.all().order_by("sort_order", "id")
+            for group in product.ordered_spec_groups
         ],
         features=[
             ProductFeatureSchema(id=feature.id, title=feature.title, body=feature.body)
-            for feature in product.features.all().order_by("sort_order", "id")
+            for feature in product.ordered_features
         ],
         use_cases=[
             ProductUseCaseSchema(id=item.id, title=item.title, summary=item.summary)
-            for item in product.use_cases.all().order_by("sort_order", "id")
+            for item in product.ordered_use_cases
         ],
         media_items=[
             ProductMediaSchema(
@@ -177,7 +233,7 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
                 alt_override=item.alt_override or "",
                 asset=serialize_asset(item.asset),
             )
-            for item in product.media_items.all().order_by("sort_order", "id")
+            for item in product.ordered_media_items
         ],
         downloads=[
             ProductDownloadSchema(
@@ -186,7 +242,7 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
                 download_kind=item.download_kind_code,
                 asset=serialize_asset(item.asset),
             )
-            for item in product.downloads.all().order_by("sort_order", "id")
+            for item in product.ordered_downloads
         ],
         related_products=[serialize_product_summary(item) for item in related_products if item],
         related_resources=[
