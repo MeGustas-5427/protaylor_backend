@@ -10,7 +10,7 @@ JSONDict: TypeAlias = dict[str, JSONValue]
 class ChoicesMixin:
     @classmethod
     def choices(cls):
-        return []
+        raise NotImplementedError(f"{cls.__name__}.choices() must be implemented by subclasses.")
 
     @classmethod
     def select(cls):
@@ -22,7 +22,7 @@ class ChoicesMixin:
 
     @classmethod
     def codes(cls):
-        return {}
+        raise NotImplementedError(f"{cls.__name__}.codes() must be implemented by subclasses.")
 
     @classmethod
     def code_of(cls, value):
