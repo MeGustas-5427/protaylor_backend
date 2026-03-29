@@ -80,7 +80,7 @@ def get_home_config() -> HomeConfigSchema:
         featured_cards=[
             HomeFeaturedCardSchema(
                 id=item.id,
-                card_type=item.card_type_code,
+                card_type_code=item.card_type_code,
                 title=item.title,
                 summary=item.summary,
                 href=item.href,

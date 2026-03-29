@@ -23,7 +23,7 @@ class HomeValuePointSchema(Schema):
 
 class HomeFeaturedCardSchema(Schema):
     id: int
-    card_type: str
+    card_type_code: str
     title: str
     summary: str
     href: str

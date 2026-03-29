@@ -49,7 +49,7 @@ class ProductSpecRowSchema(Schema):
 class ProductSpecGroupSchema(Schema):
     id: int
     title: str
-    group_kind: str
+    group_kind_code: str
     rows: list[ProductSpecRowSchema]
 
 

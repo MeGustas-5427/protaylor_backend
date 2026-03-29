@@ -37,6 +37,7 @@ class CatalogApiTests(TestCase):
         self.assertEqual(payload["model_code"], "ICM-T838")
         self.assertGreaterEqual(len(payload["quick_facts"]), 1)
         self.assertGreaterEqual(len(payload["related_resources"]), 1)
+        self.assertIn("group_kind_code", payload["spec_groups"][0])
 
     def test_product_detail_service_stays_within_expected_query_budget(self) -> None:
         ContentType.objects.get_for_model(Product, for_concrete_model=False)

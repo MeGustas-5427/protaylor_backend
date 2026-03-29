@@ -22,3 +22,4 @@ class ContentApiTests(TestCase):
         self.assertEqual(payload["slug"], "home")
         self.assertGreaterEqual(len(payload["buyer_paths"]), 1)
         self.assertGreaterEqual(len(payload["faq_items"]), 1)
+        self.assertIn("card_type_code", payload["featured_cards"][0])

@@ -203,7 +203,7 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
             ProductSpecGroupSchema(
                 id=group.id,
                 title=group.title,
-                group_kind=group.group_kind_code,
+                group_kind_code=group.group_kind_code,
                 rows=[
                     ProductSpecRowSchema(
                         id=row.id,
