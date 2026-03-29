@@ -115,6 +115,16 @@ class ProductRelationType(ChoicesMixin, IntEnum):
 
 class ProductCategory(SeoFieldsMixin):
     name = models.CharField(_("分类名称"), max_length=255)
+    parent = models.ForeignKey(
+        "self",
+        verbose_name=_("父分类"),
+        on_delete=models.SET_NULL,
+        db_constraint=False,
+        null=True,
+        blank=True,
+        related_name="children",
+        help_text="L2 子分类填写父分类；L1 顶级分类留空。",
+    )
     summary = models.TextField(_("摘要"), blank=True)
     buyer_fit = models.TextField(_("适合谁"), blank=True)
     selection_guide = models.TextField(_("选型建议"), blank=True)
@@ -154,6 +164,26 @@ class Product(SeoFieldsMixin):
     after_sales_support = models.TextField(_("售后支持"), blank=True)
     quote_cta_title = models.CharField(_("询盘标题"), max_length=160, blank=True)
     quote_cta_body = models.TextField(_("询盘说明"), blank=True)
+    source_url = models.URLField(
+        _("来源 URL"),
+        max_length=500,
+        blank=True,
+        help_text="Bossgoo 原始产品页链接，仅供数据追溯，不对外展示。",
+    )
+    raw_description = models.TextField(
+        _("原始描述"),
+        blank=True,
+        help_text="从 Bossgoo 导入的原始产品描述文本，编辑精选后可忽略此字段。",
+    )
+    raw_attributes = models.JSONField(
+        _("原始属性"),
+        default=dict,
+        blank=True,
+        help_text=(
+            "从 Bossgoo 导入的原始键值属性（对应 Excel B 区 333 个字段中非空的部分）。"
+            "此字段为数据存档层，前端展示请使用 ProductSpecGroup/Row。"
+        ),
+    )
     is_canonical = models.BooleanField(_("是否 canonical"), default=True, db_index=True)
 
     class Meta:
