@@ -13,6 +13,43 @@ from .models import (
 )
 
 
+class TimestampReadonlyAdminMixin:
+    readonly_fields = ("created_at", "updated_at")
+
+
+class BasePageAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
+    search_fields = ("title", "slug", "primary_query")
+    prepopulated_fields = {"slug": ("title",)}
+    date_hierarchy = "published_at"
+
+    @staticmethod
+    def get_base_fieldsets(page_kind_field: str | None = None):
+        identity_fields = ["title"]
+        if page_kind_field:
+            identity_fields.append(page_kind_field)
+        identity_fields.extend(["slug", "status"])
+        return (
+            ("Page Identity", {"fields": tuple(identity_fields)}),
+            ("Page Content", {"fields": ("h1", "lead_text", "summary", "body")}),
+            (
+                "SEO & Indexing",
+                {
+                    "fields": (
+                        "url_path",
+                        "seo_title",
+                        "meta_description",
+                        "canonical_url",
+                        "index_mode",
+                        "primary_query",
+                        "secondary_queries",
+                        "published_at",
+                    )
+                },
+            ),
+            ("Timestamps", {"fields": ("created_at", "updated_at")}),
+        )
+
+
 class HomeBuyerPathInline(admin.TabularInline):
     model = HomeBuyerPath
     extra = 0
@@ -40,7 +77,7 @@ class HomeProofItemInline(admin.TabularInline):
 
 
 @admin.register(HomeConfig)
-class HomeConfigAdmin(admin.ModelAdmin):
+class HomeConfigAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
     list_display = ("title", "slug", "status", "is_active", "updated_at")
     list_filter = ("status", "is_active", "index_mode")
     search_fields = ("title", "slug", "hero_title")
@@ -50,6 +87,75 @@ class HomeConfigAdmin(admin.ModelAdmin):
         HomeValuePointInline,
         HomeFeaturedCardInline,
         HomeProofItemInline,
+    )
+    fieldsets = (
+        ("Page Identity", {"fields": ("title", "slug", "status", "is_active")}),
+        (
+            "Hero",
+            {
+                "fields": (
+                    "h1",
+                    "lead_text",
+                    "hero_eyebrow",
+                    "hero_title",
+                    "hero_summary",
+                    "trust_ribbon",
+                )
+            },
+        ),
+        (
+            "Hero CTAs",
+            {
+                "fields": (
+                    "hero_primary_cta_label",
+                    "hero_primary_cta_href",
+                    "hero_secondary_cta_label",
+                    "hero_secondary_cta_href",
+                )
+            },
+        ),
+        (
+            "Section Headings",
+            {
+                "fields": (
+                    "buyer_path_heading",
+                    "category_section_heading",
+                    "value_section_heading",
+                    "featured_content_heading",
+                    "proof_section_heading",
+                    "faq_section_heading",
+                )
+            },
+        ),
+        (
+            "Final CTA",
+            {
+                "fields": (
+                    "final_cta_title",
+                    "final_cta_body",
+                    "final_cta_primary_label",
+                    "final_cta_primary_href",
+                    "final_cta_secondary_label",
+                    "final_cta_secondary_href",
+                )
+            },
+        ),
+        (
+            "SEO & Indexing",
+            {
+                "fields": (
+                    "url_path",
+                    "seo_title",
+                    "meta_description",
+                    "canonical_url",
+                    "index_mode",
+                    "primary_query",
+                    "secondary_queries",
+                    "published_at",
+                )
+            },
+        ),
+        ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )
 
 
@@ -88,30 +194,24 @@ class HomeProofItemAdmin(admin.ModelAdmin):
 
 
 @admin.register(SolutionPage)
-class SolutionPageAdmin(admin.ModelAdmin):
+class SolutionPageAdmin(BasePageAdmin):
     list_display = ("title", "solution_type", "status", "index_mode")
     list_filter = ("solution_type", "status", "index_mode")
-    search_fields = ("title", "slug", "primary_query")
-    prepopulated_fields = {"slug": ("title",)}
-    date_hierarchy = "published_at"
+    fieldsets = BasePageAdmin.get_base_fieldsets("solution_type")
 
 
 @admin.register(ResourceArticle)
-class ResourceArticleAdmin(admin.ModelAdmin):
+class ResourceArticleAdmin(BasePageAdmin):
     list_display = ("title", "resource_type", "status", "index_mode")
     list_filter = ("resource_type", "status", "index_mode")
-    search_fields = ("title", "slug", "primary_query")
-    prepopulated_fields = {"slug": ("title",)}
-    date_hierarchy = "published_at"
+    fieldsets = BasePageAdmin.get_base_fieldsets("resource_type")
 
 
 @admin.register(CompanyPage)
-class CompanyPageAdmin(admin.ModelAdmin):
+class CompanyPageAdmin(BasePageAdmin):
     list_display = ("title", "page_kind", "status", "index_mode")
     list_filter = ("page_kind", "status", "index_mode")
-    search_fields = ("title", "slug", "primary_query")
-    prepopulated_fields = {"slug": ("title",)}
-    date_hierarchy = "published_at"
+    fieldsets = BasePageAdmin.get_base_fieldsets("page_kind")
 
 
 @admin.register(FAQItem)

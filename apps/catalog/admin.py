@@ -14,6 +14,10 @@ from .models import (
 )
 
 
+class TimestampReadonlyAdminMixin:
+    readonly_fields = ("created_at", "updated_at")
+
+
 class ProductVariantInline(admin.TabularInline):
     model = ProductVariant
     extra = 0
@@ -55,16 +59,60 @@ class ProductRelationInline(admin.TabularInline):
 
 
 @admin.register(ProductCategory)
-class ProductCategoryAdmin(admin.ModelAdmin):
+class ProductCategoryAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
     list_display = ("name", "slug", "is_core_category", "status", "index_mode")
     list_filter = ("status", "index_mode", "is_core_category")
     search_fields = ("name", "slug", "primary_query")
     prepopulated_fields = {"slug": ("name",)}
     ordering = ("name",)
+    list_select_related = ("parent",)
+    autocomplete_fields = ("parent",)
+    fieldsets = (
+        (
+            "Category Identity",
+            {
+                "fields": (
+                    "name",
+                    "parent",
+                    "slug",
+                    "status",
+                    "is_core_category",
+                )
+            },
+        ),
+        (
+            "Category Messaging",
+            {
+                "fields": (
+                    "h1",
+                    "lead_text",
+                    "summary",
+                    "buyer_fit",
+                    "selection_guide",
+                )
+            },
+        ),
+        (
+            "SEO & Indexing",
+            {
+                "fields": (
+                    "url_path",
+                    "seo_title",
+                    "meta_description",
+                    "canonical_url",
+                    "index_mode",
+                    "primary_query",
+                    "secondary_queries",
+                    "published_at",
+                )
+            },
+        ),
+        ("Timestamps", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 @admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
+class ProductAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
     list_display = ("name", "category", "model_code", "status", "is_canonical")
     list_filter = ("status", "is_canonical", "category")
     search_fields = ("name", "model_code", "slug", "primary_query")
@@ -79,6 +127,73 @@ class ProductAdmin(admin.ModelAdmin):
     )
     autocomplete_fields = ("category",)
     prepopulated_fields = {"slug": ("name",)}
+    fieldsets = (
+        (
+            "Product Identity",
+            {
+                "fields": (
+                    "category",
+                    "name",
+                    "model_code",
+                    "slug",
+                    "status",
+                    "is_canonical",
+                )
+            },
+        ),
+        (
+            "Buyer-Facing Content",
+            {
+                "fields": (
+                    "h1",
+                    "lead_text",
+                    "summary",
+                    "buyer_fit",
+                    "application_summary",
+                    "buyer_checklist",
+                )
+            },
+        ),
+        (
+            "Sales & Support Messaging",
+            {
+                "fields": (
+                    "customization_support",
+                    "packing_shipping",
+                    "after_sales_support",
+                    "quote_cta_title",
+                    "quote_cta_body",
+                )
+            },
+        ),
+        (
+            "SEO & Indexing",
+            {
+                "fields": (
+                    "url_path",
+                    "seo_title",
+                    "meta_description",
+                    "canonical_url",
+                    "index_mode",
+                    "primary_query",
+                    "secondary_queries",
+                    "published_at",
+                )
+            },
+        ),
+        (
+            "Source Archive",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "source_url",
+                    "raw_description",
+                    "raw_attributes",
+                ),
+            },
+        ),
+        ("Timestamps", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 @admin.register(ProductVariant)
