@@ -164,18 +164,27 @@ class HomeConfig(BasePage, ActivatableModel):
     hero_secondary_cta_label = models.CharField(_("次 CTA 标签"), max_length=80, blank=True)
     hero_secondary_cta_href = models.CharField(_("次 CTA 链接"), max_length=255, blank=True)
     trust_ribbon = models.CharField(_("Trust Ribbon"), max_length=255, blank=True)
-    buyer_path_heading = models.CharField(_("Buyer Path Heading"), max_length=160, blank=True)
-    category_section_heading = models.CharField(_("Category Heading"), max_length=160, blank=True)
-    value_section_heading = models.CharField(_("Value Heading"), max_length=160, blank=True)
     featured_content_heading = models.CharField(_("Featured Heading"), max_length=160, blank=True)
-    proof_section_heading = models.CharField(_("Proof Heading"), max_length=160, blank=True)
-    faq_section_heading = models.CharField(_("FAQ Heading"), max_length=160, blank=True)
-    final_cta_title = models.CharField(_("Final CTA Title"), max_length=160, blank=True)
-    final_cta_body = models.TextField(_("Final CTA Body"), blank=True)
-    final_cta_primary_label = models.CharField(_("Final CTA 主标签"), max_length=80, blank=True)
-    final_cta_primary_href = models.CharField(_("Final CTA 主链接"), max_length=255, blank=True)
-    final_cta_secondary_label = models.CharField(_("Final CTA 次标签"), max_length=80, blank=True)
-    final_cta_secondary_href = models.CharField(_("Final CTA 次链接"), max_length=255, blank=True)
+    hero_image = models.ForeignKey(
+        "core.MediaAsset",
+        verbose_name=_("Hero 背景图"),
+        on_delete=models.SET_NULL,
+        db_constraint=False,
+        blank=True,
+        null=True,
+        related_name="home_hero_images",
+        help_text="首页 Hero 区背景图。",
+    )
+    value_section_image = models.ForeignKey(
+        "core.MediaAsset",
+        verbose_name=_("价值区配图"),
+        on_delete=models.SET_NULL,
+        db_constraint=False,
+        blank=True,
+        null=True,
+        related_name="home_value_images",
+        help_text="首页价值点区右侧配图。",
+    )
 
     class Meta:
         db_table = "home_config"
@@ -201,33 +210,21 @@ class HomeBuyerPath(OrderedModel):
         related_name="buyer_paths",
         help_text="所属首页配置。",
     )
+    asset = models.ForeignKey(
+        "core.MediaAsset",
+        verbose_name=_("背景图"),
+        on_delete=models.SET_NULL,
+        db_constraint=False,
+        blank=True,
+        null=True,
+        related_name="buyer_path_assets",
+        help_text="买家路径卡片背景图。",
+    )
 
     class Meta(OrderedModel.Meta):
         db_table = "home_buyer_path"
         verbose_name = "首页买家路径"
         verbose_name_plural = "首页买家路径"
-
-    def __str__(self) -> str:
-        return self.title
-
-
-class HomeValuePoint(OrderedModel):
-    home = models.ForeignKey(
-        HomeConfig,
-        verbose_name=_("首页配置"),
-        on_delete=models.CASCADE,
-        db_constraint=False,
-        related_name="value_points",
-        help_text="所属首页配置。",
-    )
-    eyebrow = models.CharField(_("Eyebrow"), max_length=120, blank=True)
-    title = models.CharField(_("标题"), max_length=160)
-    body = models.TextField(_("内容"))
-
-    class Meta(OrderedModel.Meta):
-        db_table = "home_value_point"
-        verbose_name = "首页价值点"
-        verbose_name_plural = "首页价值点"
 
     def __str__(self) -> str:
         return self.title
@@ -250,8 +247,10 @@ class HomeFeaturedCard(OrderedModel):
         default=HomeFeaturedCardType.CATEGORY,
         help_text="首页精选卡片类型。",
     )
+    eyebrow = models.CharField(_("Eyebrow"), max_length=120, blank=True)
     title = models.CharField(_("标题"), max_length=160)
     summary = models.TextField(_("摘要"))
+    cta_label = models.CharField(_("CTA 标签"), max_length=80, blank=True)
     href = models.CharField(_("链接"), max_length=255)
     asset = models.ForeignKey(
         "core.MediaAsset",
@@ -298,7 +297,6 @@ class HomeProofItem(OrderedModel):
     evidence = models.TextField(_("证据文本"))
     source_name = models.CharField(_("来源姓名"), max_length=120, blank=True)
     source_role = models.CharField(_("来源角色"), max_length=120, blank=True)
-    source_company = models.CharField(_("来源公司"), max_length=120, blank=True)
     href = models.CharField(_("链接"), max_length=255, blank=True)
     asset = models.ForeignKey(
         "core.MediaAsset",
