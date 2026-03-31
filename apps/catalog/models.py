@@ -162,8 +162,6 @@ class Product(SeoFieldsMixin):
     customization_support = models.TextField(_("定制支持"), blank=True)
     packing_shipping = models.TextField(_("包装运输"), blank=True)
     after_sales_support = models.TextField(_("售后支持"), blank=True)
-    quote_cta_title = models.CharField(_("询盘标题"), max_length=160, blank=True)
-    quote_cta_body = models.TextField(_("询盘说明"), blank=True)
     source_url = models.URLField(
         _("来源 URL"),
         max_length=500,
@@ -318,6 +316,12 @@ class ProductUseCase(OrderedModel):
         db_constraint=False,
         related_name="use_cases",
         help_text="所属产品。",
+    )
+    icon = models.CharField(
+        _("图标"),
+        max_length=60,
+        blank=True,
+        help_text="Material Icon slug，如 restaurant / hotel / icecream。",
     )
     title = models.CharField(_("场景标题"), max_length=160)
     summary = models.TextField(_("场景说明"))
