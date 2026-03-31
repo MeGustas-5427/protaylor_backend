@@ -1,13 +1,13 @@
-name: menu-fresh-main
+name: protalor-main
 
 services:
   web:
     build: .
-    hostname: menu-fresh-web-main
+    hostname: protalor-web-main
     networks:
       edge:
         aliases:
-          - menu-fresh-main-web
+          - protalor-main-web
       mynet: {}
     expose:
       - "8000"    # 只在 Docker 网络内部暴露
