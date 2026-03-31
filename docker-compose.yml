@@ -1,0 +1,51 @@
+name: menu-fresh-main
+
+services:
+  web:
+    build: .
+    hostname: menu-fresh-web-main
+    networks:
+      edge:
+        aliases:
+          - menu-fresh-main-web
+      mynet: {}
+    expose:
+      - "8000"    # 只在 Docker 网络内部暴露
+    volumes:
+      - .:/app
+      - ./staticfiles:/app/staticfiles
+      - ./media:/app/media
+      - ./logs:/app/logs
+    environment:
+      - DEBUG=False
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,81.68.79.234
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:latest
+    networks:
+      - mynet
+    volumes:
+      - ./data/redis:/data       # Redis 数据持久化目录（AOF/RDB 等）
+    command:
+      # --appendonly yes：开启 AOF 持久化（更安全，但会多一点 IO）
+      # --maxmemory 128mb：给 Redis 设一个上限，避免它未来数据变多把整机内存吃爆
+      # --maxmemory-policy allkeys-lru：内存满了就按 LRU 淘汰 key（比直接 OOM 更可控）
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+    restart: unless-stopped  # 容器异常退出会自动重启
+
+networks:  # 在从未启动的服务器内，先创建这个网络 docker network create edge，再启动docker compose up -d
+  edge:
+    external: true
+  mynet:
+    driver: bridge

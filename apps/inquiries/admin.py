@@ -12,7 +12,7 @@ class InquirySourceContextInline(admin.StackedInline):
 
 @admin.register(Inquiry)
 class InquiryAdmin(admin.ModelAdmin):
-    list_display = ("full_name", "email", "company", "country", "business_type", "status", "created_at")
+    list_display = ("full_name", "email", "company", "phone", "country", "business_type", "target_use_case", "consent_to_contact", "status", "created_at")
     list_filter = ("status", "country", "business_type")
     search_fields = ("full_name", "email", "company", "message")
     date_hierarchy = "created_at"

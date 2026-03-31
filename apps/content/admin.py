@@ -7,7 +7,6 @@ from .models import (
     HomeConfig,
     HomeFeaturedCard,
     HomeProofItem,
-    HomeValuePoint,
     ResourceArticle,
     SolutionPage,
 )
@@ -53,12 +52,7 @@ class BasePageAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
 class HomeBuyerPathInline(admin.TabularInline):
     model = HomeBuyerPath
     extra = 0
-    show_change_link = True
-
-
-class HomeValuePointInline(admin.TabularInline):
-    model = HomeValuePoint
-    extra = 0
+    autocomplete_fields = ("asset",)
     show_change_link = True
 
 
@@ -82,9 +76,9 @@ class HomeConfigAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
     list_filter = ("status", "is_active", "index_mode")
     search_fields = ("title", "slug", "hero_title")
     prepopulated_fields = {"slug": ("title",)}
+    autocomplete_fields = ("hero_image", "value_section_image")
     inlines = (
         HomeBuyerPathInline,
-        HomeValuePointInline,
         HomeFeaturedCardInline,
         HomeProofItemInline,
     )
@@ -100,6 +94,8 @@ class HomeConfigAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
                     "hero_title",
                     "hero_summary",
                     "trust_ribbon",
+                    "hero_image",
+                    "value_section_image",
                 )
             },
         ),
@@ -118,25 +114,7 @@ class HomeConfigAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
             "Section Headings",
             {
                 "fields": (
-                    "buyer_path_heading",
-                    "category_section_heading",
-                    "value_section_heading",
                     "featured_content_heading",
-                    "proof_section_heading",
-                    "faq_section_heading",
-                )
-            },
-        ),
-        (
-            "Final CTA",
-            {
-                "fields": (
-                    "final_cta_title",
-                    "final_cta_body",
-                    "final_cta_primary_label",
-                    "final_cta_primary_href",
-                    "final_cta_secondary_label",
-                    "final_cta_secondary_href",
                 )
             },
         ),
@@ -164,15 +142,7 @@ class HomeBuyerPathAdmin(admin.ModelAdmin):
     list_display = ("title", "audience_key", "home", "sort_order")
     search_fields = ("title", "audience_key")
     list_select_related = ("home",)
-    autocomplete_fields = ("home",)
-
-
-@admin.register(HomeValuePoint)
-class HomeValuePointAdmin(admin.ModelAdmin):
-    list_display = ("title", "home", "sort_order")
-    search_fields = ("title",)
-    list_select_related = ("home",)
-    autocomplete_fields = ("home",)
+    autocomplete_fields = ("home", "asset")
 
 
 @admin.register(HomeFeaturedCard)
@@ -188,7 +158,7 @@ class HomeFeaturedCardAdmin(admin.ModelAdmin):
 class HomeProofItemAdmin(admin.ModelAdmin):
     list_display = ("title", "proof_kind", "home", "sort_order")
     list_filter = ("proof_kind",)
-    search_fields = ("title", "source_name", "source_company")
+    search_fields = ("title", "source_name")
     list_select_related = ("home", "asset")
     autocomplete_fields = ("home", "asset")
 

@@ -161,8 +161,6 @@ class ProductAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
                     "customization_support",
                     "packing_shipping",
                     "after_sales_support",
-                    "quote_cta_title",
-                    "quote_cta_body",
                 )
             },
         ),
