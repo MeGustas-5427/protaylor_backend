@@ -22,23 +22,22 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-6h%_ld*r+sb6*15liafji^g4@z17bfex7y_pp0n36)d@p@8ts$'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 CONFIG_FILE = BASE_DIR / "config.toml"
 with open(CONFIG_FILE, "rb") as f:
     config = tomllib.load(f)
 
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = config['SECRET_KEY']
 
 DEBUG = config["DEBUG"]
 
 # 从环境变量读取ALLOWED_HOSTS，如果没有则使用默认值
 ALLOWED_HOSTS = config.get('ALLOWED_HOSTS', '').split(',') if config.get('ALLOWED_HOSTS') else [
-    # mengdie.ai 域名系列
-    'mengdie.ai',
-    # 'www.mengdie.ai',
-    'api.mengdie.ai',
+    'www.protaylor.com',   # ← 生产域名（替换 mengdie.ai）
+    'protaylor.com',
+    'api.protaylor.com',   # ← 如果 API 单独子域
 
     # 本地开发
     'localhost',
@@ -180,11 +179,6 @@ else:
     else:
         print("🚀 生产模式：使用Neon PostgreSQL数据库")
 
-    DATABASES['default']['CONN_HEALTH_CHECKS'] = True  # 健康检查成本
-    if 'celery' in sys.argv or 'worker' in sys.argv or 'beat' in sys.argv:
-      DATABASES['default']['CONN_MAX_AGE'] = 0  # 任务完成后立即关闭连接
-    else:
-      DATABASES['default']['CONN_MAX_AGE'] = 120  # 2分钟复用
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -239,10 +233,14 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
     "http://47.237.84.36",
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://localhost:5175",
-    "https://mengdie.ai",
+
+    # 开发环境
+    "http://localhost:3000",  # Next.js dev server
+    "http://127.0.0.1:3000",
+
+    # 生产环境
+    "https://www.protaylor.com",  # ← 替换为真实域名
+    "https://protaylor.com",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -252,7 +250,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
     "http://47.237.84.36",
-    "https://mengdie.ai",
+    "https://protaylor.com",
 ]
 
 # API接口CSRF豁免URL模式
