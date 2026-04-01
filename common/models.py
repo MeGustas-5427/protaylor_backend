@@ -79,12 +79,21 @@ class SeoFieldsMixin(PublishableModel):
         db_index=True,
         help_text="Index 或 noindex。",
     )
-    lead_text = models.TextField(_("导语"), blank=True, help_text="页面首段导语。")
-    primary_query = models.CharField(_("主查询词"), max_length=160, blank=True, help_text="核心目标查询。")
+    lead_text = models.TextField(
+        _("导语"),
+        blank=True,
+        help_text="用于页面 Hero 标题下的首段导语。应先说明内容适合谁、解决什么问题；不要与摘要重复。",
+    )
+    primary_query = models.CharField(
+        _("主查询词"),
+        max_length=160,
+        blank=True,
+        help_text="SEO/GEO 用的核心目标查询词，不在前台直接展示，用于校准 H1、title、meta 与正文主题。",
+    )
     secondary_queries = models.TextField(
         _("次级查询词"),
         blank=True,
-        help_text="每行一个次级查询词。",
+        help_text="SEO/GEO 用的次级查询词，每行一个；不在前台直接展示，用于 FAQ、内链、相关资源与内容覆盖规划。",
     )
 
     class Meta:

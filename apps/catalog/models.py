@@ -155,13 +155,41 @@ class Product(SeoFieldsMixin):
     )
     name = models.CharField(_("产品名称"), max_length=255)
     model_code = models.CharField(_("型号"), max_length=120, blank=True)
-    summary = models.TextField(_("摘要"), blank=True)
-    buyer_fit = models.TextField(_("适合谁"), blank=True)
-    application_summary = models.TextField(_("应用概述"), blank=True)
-    buyer_checklist = models.TextField(_("买家检查项"), blank=True)
-    customization_support = models.TextField(_("定制支持"), blank=True)
-    packing_shipping = models.TextField(_("包装运输"), blank=True)
-    after_sales_support = models.TextField(_("售后支持"), blank=True)
+    summary = models.TextField(
+        _("摘要"),
+        blank=True,
+        help_text="用于产品列表卡、相关推荐卡等摘要展示；不要写成产品详情页 Hero 首段导语。建议 1-2 句。",
+    )
+    buyer_fit = models.TextField(
+        _("适合谁"),
+        blank=True,
+        help_text="用于“适合谁 / Best fit for”模块。建议每行一个买家类型、门店类型或采购场景。",
+    )
+    application_summary = models.TextField(
+        _("应用概述"),
+        blank=True,
+        help_text="用于“应用概述 / Applications”模块，解释适用场景、运营环境与典型使用方式；不是 Hero 导语。",
+    )
+    buyer_checklist = models.TextField(
+        _("买家检查项"),
+        blank=True,
+        help_text="用于“买家检查项 / Before you request a quote”模块。建议每行一个检查项，前端按列表展示。",
+    )
+    customization_support = models.TextField(
+        _("定制支持"),
+        blank=True,
+        help_text="用于“定制支持”模块，说明 OEM/ODM、品牌、配置定制能力。",
+    )
+    packing_shipping = models.TextField(
+        _("包装运输"),
+        blank=True,
+        help_text="用于“包装运输”模块，说明包装方式、交期、运输与出口安排。",
+    )
+    after_sales_support = models.TextField(
+        _("售后支持"),
+        blank=True,
+        help_text="用于“售后支持”模块，说明保修、备件、远程支持与服务响应。",
+    )
     source_url = models.URLField(
         _("来源 URL"),
         max_length=500,
@@ -171,7 +199,7 @@ class Product(SeoFieldsMixin):
     raw_description = models.TextField(
         _("原始描述"),
         blank=True,
-        help_text="从 Bossgoo 导入的原始产品描述文本，编辑精选后可忽略此字段。",
+        help_text="从 Bossgoo 导入的原始描述，仅用于追溯与编辑参考，不在前台直接展示。",
     )
     raw_attributes = models.JSONField(
         _("原始属性"),
