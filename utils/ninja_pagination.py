@@ -115,35 +115,3 @@ def paginate_queryset(
         page_obj = paginator.page(last_page)
 
     return page_obj, _build_window(page_obj, requested_page=requested_page)
-
-
-async def apaginate_queryset(
-    objects: Any,
-    *,
-    page: int,
-    page_size: int,
-    overflow: OverflowStrategy = "last",
-) -> tuple[Page[Any], PaginationWindow]:
-    """
-    Async companion to `paginate_queryset`.
-
-    Django 6 ships `Paginator.apage()`, so async Router handlers can stay
-    non-blocking while reusing the same normalization semantics as sync code.
-    """
-
-    requested_page = normalize_page_number(page)
-    normalized_page_size = normalize_page_size(page_size)
-    paginator = Paginator(objects, normalized_page_size)
-
-    try:
-        page_obj = await paginator.apage(requested_page)
-    except PageNotAnInteger:
-        page_obj = await paginator.apage(1)
-    except EmptyPage:
-        if overflow == "404":
-            raise Http404()
-        total_pages = await paginator.anum_pages()
-        last_page = total_pages if total_pages > 0 else 1
-        page_obj = await paginator.apage(last_page)
-
-    return page_obj, _build_window(page_obj, requested_page=requested_page)

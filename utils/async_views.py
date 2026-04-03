@@ -6,15 +6,14 @@ from django.forms import Form
 from django import forms
 from django.db import models
 from django.db.models import ObjectDoesNotExist
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.core.paginator import AsyncPaginator, EmptyPage, PageNotAnInteger
 from django.http import Http404
 from django.views import View
 
-from utils.functions import pagination
 from .types import Request
 from . import restful
 
-# Django 4.2+ supports Paginator.apage(); Django 6.0 is the project baseline.
+# Django 6.0 async 方法在 AsyncPaginator 上，分页直接使用 apage() / anum_pages()。
 
 
 class AsyncPaginatorMixin:
@@ -34,8 +33,7 @@ class AsyncPaginatorMixin:
         """
         ignore = self.IGNORE_EMPTY if ignore is None else ignore
 
-        # Django 4.2+ 原生支持 Paginator.apage()，无需 sync_to_async 包装
-        paginator = Paginator(objects, count or self.MAX_NUM_PER_PAGE)
+        paginator = AsyncPaginator(objects, count or self.MAX_NUM_PER_PAGE)
         try:
             return await paginator.apage(page)
         except PageNotAnInteger:
@@ -172,19 +170,34 @@ class AsyncFilterApiView(View, AsyncPaginatorMixin):
         if not custom_ordering_applied:
             queryset = queryset.all().order_by(*self.order_by)
 
-        # 获取分页数据
+        # 获取分页数据（返回 AsyncPage，object_list 此时为未物化的 QuerySet 切片）
         this_page_objs = await self.get_paginator(
             queryset, count=self.page_size, page=self.page
         )
 
-        # 使用 paginator.count 复用已有计数，避免发起第二条 COUNT SQL
-        total = this_page_objs.paginator.count
-        
-        # 构建分页信息
-        this_paginator = pagination(
-            self.request, this_page_objs, self.page, self.page_size, total
-        )
-        
+        # acount() / anum_pages() 在 apage() 内部已缓存，此处无额外 SQL
+        total = await this_page_objs.paginator.acount()
+        num_pages = await this_page_objs.paginator.anum_pages()
+
+        # 构建分页信息：AsyncPage 无 has_next()/has_previous()，直接用算术代替
+        url = self.request.build_absolute_uri().split("?")[0]
+        has_next = this_page_objs.number < num_pages
+        has_previous = this_page_objs.number > 1
+        # 用 this_page_objs.number 而非 self.page：
+        # overflow 后实际页码与请求页码不同（如 page=999 → 实际 page=5），
+        # current_page 应反映服务端实际返回的页码。
+        actual_page = this_page_objs.number
+        this_paginator = {
+            "count": total,
+            "current_page": actual_page,
+            "page_size": self.page_size,
+            "next": f"{url}?p={actual_page + 1}&page_size={self.page_size}" if has_next else False,
+            "previous": f"{url}?p={actual_page - 1}&page_size={self.page_size}" if has_previous else False,
+        }
+
+        # 物化 QuerySet 切片为 list，之后才能同步迭代
+        await this_page_objs.aget_object_list()
+
         # 序列化数据
         this_page_result = await self.serialization(this_page_objs.object_list)
         this_paginator.update({"results": this_page_result})

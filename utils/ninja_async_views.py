@@ -4,7 +4,8 @@ from typing import Any
 
 from django.core.paginator import Page
 
-from utils.ninja_pagination import OverflowStrategy, PaginationWindow, apaginate_queryset
+from utils.ninja_async_pagination import apaginate_queryset
+from utils.ninja_pagination import OverflowStrategy, PaginationWindow
 from utils.ninja_views import NinjaListQuery, NinjaPaginationMixin
 
 
