@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Iterable
+
 from django.db.models import Prefetch
 from ninja.errors import HttpError
 
@@ -16,11 +18,16 @@ from apps.catalog.models import (
     ProductVariant,
 )
 from apps.catalog.schemas import (
+    CatalogPaginationSchema,
+    ProductCardMetricSchema,
     ProductCategoryDetailSchema,
+    ProductCategoryListingResponseSchema,
     ProductDetailSchema,
     ProductDownloadSchema,
     ProductFeatureSchema,
+    ProductListingItemSchema,
     ProductMediaSchema,
+    ProductPathSchema,
     ProductSpecGroupSchema,
     ProductSpecRowSchema,
     ProductUseCaseSchema,
@@ -28,6 +35,155 @@ from apps.catalog.schemas import (
 )
 from common.api_schemas import ProductBreadcrumbSchema, RelatedResourceSchema
 from common.presenters import serialize_asset, serialize_category_card, serialize_faqs_for, serialize_product_summary
+from utils.ninja_pagination import PaginationWindow
+from utils.ninja_views import NinjaPaginationMixin
+
+DEFAULT_CATEGORY_PRODUCT_ORDERING = ("name", "id")
+CATEGORY_PRODUCT_ORDERING_MAP: dict[str, tuple[str, ...]] = {
+    "name": ("name", "id"),
+    "name_desc": ("-name", "-id"),
+    "newest": ("-created_at", "-id"),
+}
+LISTING_METRIC_PRIORITY = (
+    "production",
+    "output",
+    "hopper capacity",
+    "cylinders",
+    "cylinder volume",
+    "cooling system",
+    "voltage",
+    "power",
+)
+LISTING_METRIC_LIMIT = 3
+
+
+class CategoryProductListingContract(NinjaPaginationMixin):
+    """
+    面向 Router 的分类列表查询适配器。
+
+    catalog 对前端暴露的是符号化排序键，而不是裸 ORM 字段。
+    用单独的 contract 类包住归一逻辑，可以让 Router 更薄，也让
+    分页和排序语义集中在一个可审核的位置。
+    """
+
+    DEFAULT_PAGE_SIZE = 12
+    MAX_PAGE_SIZE = 100
+    DEFAULT_ORDER_BY = ("name",)
+    OVERFLOW_STRATEGY = "last"
+
+    def resolve_public_ordering(self, order_by: str | None) -> tuple[str, ...]:
+        # 先做 query 归一，再把公开排序键映射到白名单 ORM 排序元组。
+        # 这样接口不会泄漏内部字段名，后续底层字段调整时也更容易维护。
+        order_key = self.normalize_query(page=1, page_size=self.DEFAULT_PAGE_SIZE, order_by=order_by).order_by[0]
+        return CATEGORY_PRODUCT_ORDERING_MAP.get(order_key, DEFAULT_CATEGORY_PRODUCT_ORDERING)
+
+
+category_product_listing_contract = CategoryProductListingContract()
+
+
+def _serialize_pagination(window: PaginationWindow) -> CatalogPaginationSchema:
+    # 这里故意显式展开字段，而不是直接 `window.__dict__` 整包塞进去。
+    # 这样 reviewer 一眼就能看清哪些分页字段是真正对外公开的 API。
+    return CatalogPaginationSchema(
+        requested_page=window.requested_page,
+        current_page=window.current_page,
+        page_size=window.page_size,
+        total_items=window.total_items,
+        total_pages=window.total_pages,
+        start_item=window.start_item,
+        end_item=window.end_item,
+        has_previous=window.has_previous,
+        has_next=window.has_next,
+    )
+
+
+def _resolve_category_product_ordering(order_by: str | None) -> tuple[str, ...]:
+    return category_product_listing_contract.resolve_public_ordering(order_by)
+
+
+def _format_spec_row_value(row: ProductSpecRow) -> str:
+    return f"{row.value} {row.unit}".strip()
+
+
+def _iter_listing_rows(product: Product) -> Iterable[ProductSpecRow]:
+    """
+    Yield prefetched spec rows in display order.
+
+    Listing cards only need a compact subset of technical facts, so we walk the
+    already-prefetched groups instead of issuing per-product follow-up queries.
+    """
+
+    for group in getattr(product, "listing_spec_groups", []):
+        for row in getattr(group, "ordered_rows", []):
+            yield row
+
+
+def _serialize_listing_metrics(product: Product) -> list[ProductCardMetricSchema]:
+    highlighted_rows = [row for row in _iter_listing_rows(product) if row.is_highlight]
+    candidate_rows = highlighted_rows or list(_iter_listing_rows(product))
+    metrics: list[ProductCardMetricSchema] = []
+    used_row_ids: set[int] = set()
+
+    # 优先返回买家在列表页最先关心的事实：产能、容量、制冷/供电能力。
+    # 这个优先级由后端统一决定，前端不需要再猜哪些规格更适合做卡片指标。
+    for preferred_label in LISTING_METRIC_PRIORITY:
+        for row in candidate_rows:
+            if row.id in used_row_ids:
+                continue
+            if row.label.strip().lower() != preferred_label:
+                continue
+            metrics.append(ProductCardMetricSchema(label=row.label, value=_format_spec_row_value(row)))
+            used_row_ids.add(row.id)
+            if len(metrics) >= LISTING_METRIC_LIMIT:
+                return metrics
+            break
+
+    for row in candidate_rows:
+        if row.id in used_row_ids:
+            continue
+        metrics.append(ProductCardMetricSchema(label=row.label, value=_format_spec_row_value(row)))
+        if len(metrics) >= LISTING_METRIC_LIMIT:
+            break
+
+    return metrics
+
+
+def _resolve_listing_media(product: Product) -> tuple[str, str]:
+    """
+    Pick a stable card image without asking the frontend to infer media rules.
+
+    The queryset is already ordered with primary media first, so the first valid
+    asset is the canonical listing card image.
+    """
+
+    for media_item in getattr(product, "listing_media_items", []):
+        if not media_item.asset:
+            continue
+        alt_text = media_item.alt_override or media_item.asset.alt_text or product.name
+        return media_item.asset.file_url, alt_text
+    return "", product.name
+
+
+def _serialize_listing_item(product: Product) -> ProductListingItemSchema:
+    image_url, image_alt = _resolve_listing_media(product)
+
+    return ProductListingItemSchema(
+        id=product.id,
+        name=product.name,
+        slug=product.slug,
+        url_path=product.url_path,
+        model_code=product.model_code or "",
+        summary=product.summary or product.lead_text or "",
+        card_image_url=image_url,
+        card_image_alt=image_alt,
+        # 这些字段给后续运营编排/货架规则预留。
+        # 当前返回 None 是刻意选择，不是遗漏；这样接口形状先稳定下来，
+        # 又不会为了凑字段而伪造业务数据。
+        series_label=None,
+        badge_label=None,
+        badge_tone=None,
+        metrics=_serialize_listing_metrics(product),
+    )
 
 
 def get_category_detail(slug: str) -> ProductCategoryDetailSchema:
@@ -62,6 +218,126 @@ def get_category_detail(slug: str) -> ProductCategoryDetailSchema:
         is_core_category=category.is_core_category,
         products=[serialize_product_summary(product) for product in category.products.all()],
     )
+
+
+def get_category_product_listing(
+    slug: str,
+    *,
+    page: int = 1,
+    page_size: int = 12,
+    order_by: str | None = None,
+) -> ProductCategoryListingResponseSchema:
+    """
+    构建已发布分类的 PLP 响应契约。
+
+    这个 service 会同时返回分类页头所需内容和分页产品网格，目的是让
+    前端列表页只靠一次请求就能完成渲染，同时又不把 guide 页的深内容
+    混进列表接口。
+    """
+
+    category = (
+        ProductCategory.objects.filter(
+            slug=slug,
+            status=ProductCategory.Status.PUBLISHED,
+        )
+        .only(
+            "id",
+            "name",
+            "slug",
+            "url_path",
+            "h1",
+            "lead_text",
+            "seo_title",
+            "meta_description",
+            "summary",
+        )
+        .first()
+    )
+    if not category:
+        raise HttpError(404, "Product category not found.")
+
+    queryset = (
+        Product.objects.filter(
+            category=category,
+            status=Product.Status.PUBLISHED,
+            is_canonical=True,
+        )
+        .select_related("category")
+        .prefetch_related(
+            Prefetch(
+                "media_items",
+                queryset=ProductMedia.objects.select_related("asset").order_by("-is_primary", "sort_order", "id"),
+                to_attr="listing_media_items",
+            ),
+            Prefetch(
+                "spec_groups",
+                queryset=ProductSpecGroup.objects.order_by("sort_order", "id").prefetch_related(
+                    Prefetch(
+                        "rows",
+                        queryset=ProductSpecRow.objects.order_by("sort_order", "id"),
+                        to_attr="ordered_rows",
+                    )
+                ),
+                to_attr="listing_spec_groups",
+            ),
+        )
+        .order_by(*_resolve_category_product_ordering(order_by))
+    )
+
+    # 所有 query 归一都走专门的 contract helper，确保公开分页语义只在
+    # 一个地方定义，避免 Router、service、前端各自实现一套规则。
+    normalized_query = category_product_listing_contract.normalize_query(
+        page=page,
+        page_size=page_size,
+        order_by=order_by,
+    )
+    page_obj, window = category_product_listing_contract.paginate_objects(
+        queryset,
+        page=normalized_query.requested_page,
+        page_size=normalized_query.page_size,
+    )
+
+    return ProductCategoryListingResponseSchema(
+        id=category.id,
+        name=category.name,
+        slug=category.slug,
+        url_path=category.url_path,
+        h1=category.h1,
+        lead_text=category.lead_text or "",
+        seo_title=category.seo_title,
+        meta_description=category.meta_description,
+        summary=category.summary or "",
+        pagination=_serialize_pagination(window),
+        items=[_serialize_listing_item(product) for product in page_obj.object_list],
+    )
+
+
+def list_product_paths() -> list[ProductPathSchema]:
+    """
+    返回前端静态路由生成所需的最小路径身份信息。
+
+    把这个 payload 控制得很小，可以避免构建期路由发现和产品详情 schema
+    发生不必要耦合。
+    """
+
+    queryset = (
+        Product.objects.filter(
+            status=Product.Status.PUBLISHED,
+            is_canonical=True,
+            category__status=ProductCategory.Status.PUBLISHED,
+        )
+        .select_related("category")
+        .only("slug", "category__slug")
+        .order_by("category__slug", "slug")
+    )
+
+    return [
+        ProductPathSchema(
+            category_slug=product.category.slug,
+            product_slug=product.slug,
+        )
+        for product in queryset
+    ]
 
 
 def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSchema:
