@@ -13,7 +13,7 @@ Django 管理命令：从 protaylor_products.xlsx 导入产品数据。
     - 分类：L1 == L2 时建单层 Category；L1 != L2 时建 L1（父）→ L2（子）层级
     - 产品：挂在 L2 Category（或单层 Category）下
     - raw_attributes：B区全部非空字段，同语义重复字段保留值最长的
-    - 不导入：图片 URL、C区包装字段、source_url、ProductSpecGroup/Row
+    - 不导入：图片 URL、C区包装字段、ProductSpecGroup/Row
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ SHEET_NAME = "All Products"
 IDX_L1 = 0           # 一级分类
 IDX_L2 = 1           # 二级分类
 IDX_NAME = 2         # 产品名称
+IDX_PRODUCT_URL = 3  # Bossgoo 原始产品页 URL
 IDX_MODEL_NO = 4     # 产品型号
 IDX_B_START = 5      # B区属性起始列（含）
 IDX_B_END = 336      # B区属性结束列（含），共 333 列
@@ -198,6 +199,9 @@ class Command(BaseCommand):
 
         subheader = df.iloc[ROW_SUBHEADER]       # 字段名行
         data = df.iloc[ROW_DATA_START:].reset_index(drop=True)  # 实际产品行
+        series_col_idx = _find_optional_column_index(df, subheader, {"series_label", "series"})
+        if series_col_idx is not None:
+            self.stdout.write(f"Series column detected at index {series_col_idx}: importing Product.series.")
 
         total = len(data)
         self.stdout.write(f"Product rows: {total}")
@@ -254,6 +258,7 @@ class Command(BaseCommand):
             l1 = _clean_str(row.iloc[IDX_L1])
             l2 = _clean_str(row.iloc[IDX_L2])
             name = _clean_str(row.iloc[IDX_NAME])
+            source_url = _clean_str(row.iloc[IDX_PRODUCT_URL])
             model_no = _clean_str(row.iloc[IDX_MODEL_NO])
 
             if not name:
@@ -281,13 +286,20 @@ class Command(BaseCommand):
             secondary_queries = _clean_str(row.iloc[IDX_SECONDARY_QUERIES])
             buyer_fit = _clean_str(row.iloc[IDX_BUYER_FIT])
             application_summary = _clean_str(row.iloc[IDX_APPLICATION_SUMMARY])
+            series_value = (
+                _parse_product_series(row.iloc[series_col_idx])
+                if series_col_idx is not None
+                else Product.Series.COUNTERTOP
+            )
 
             defaults = dict(
                 name=name,
                 model_code=model_no,
+                source_url=source_url,
                 summary=summary,
                 raw_description=raw_description,
                 raw_attributes=raw_attributes,
+                series=series_value,
                 # SEO
                 h1=name,
                 seo_title=name,
@@ -344,6 +356,43 @@ def _clean_str(val: Any) -> str:
     if _is_empty(val):
         return ""
     return str(val).strip()
+
+
+def _normalize_column_name(val: Any) -> str:
+    if _is_empty(val):
+        return ""
+    return re.sub(r"[^a-z0-9]+", "_", str(val).strip().lower()).strip("_")
+
+
+def _find_optional_column_index(
+    df: "Any",
+    subheader_row: "Any",
+    aliases: set[str],
+) -> int | None:
+    normalized_aliases = {_normalize_column_name(alias) for alias in aliases}
+    for idx, column_name in enumerate(df.columns):
+        if _normalize_column_name(column_name) in normalized_aliases:
+            return idx
+    for idx, column_name in enumerate(subheader_row):
+        if _normalize_column_name(column_name) in normalized_aliases:
+            return idx
+    return None
+
+
+def _parse_product_series(val: Any) -> int:
+    from apps.catalog.models import ProductSeries
+
+    if _is_empty(val):
+        return ProductSeries.COUNTERTOP
+
+    normalized = re.sub(r"[^a-z]", "", str(val).strip().lower())
+    if normalized in {"countertop", "countertopseries"}:
+        return ProductSeries.COUNTERTOP
+    if normalized in {"industrial", "industrialseries"}:
+        return ProductSeries.INDUSTRIAL
+    raise CommandError(
+        f"Invalid series_label '{val}'. Expected COUNTERTOP SERIES or INDUSTRIAL SERIES."
+    )
 
 
 def _load_category_data(path: "Path", pd: "Any") -> "dict[str, dict]":
