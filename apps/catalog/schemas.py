@@ -8,7 +8,6 @@ from common.api_schemas import (
     MediaAssetSchema,
     ProductBreadcrumbSchema,
     ProductSummarySchema,
-    RelatedResourceSchema,
 )
 
 
@@ -103,6 +102,13 @@ class ProductPathSchema(Schema):
     product_slug: str
 
 
+class CategoryPathSchema(Schema):
+    """前端分类静态路由生成所需的最小路径身份信息。"""
+
+    slug: str
+    url_path: str
+
+
 class ProductCategoryDetailSchema(Schema):
     id: int
     name: str
@@ -152,6 +158,7 @@ class ProductFeatureSchema(Schema):
 
 class ProductUseCaseSchema(Schema):
     id: int
+    icon: str
     title: str
     summary: str
 
@@ -171,6 +178,42 @@ class ProductDownloadSchema(Schema):
     asset: MediaAssetSchema | None = None
 
 
+class RelatedProductCardSchema(Schema):
+    """
+    产品详情页“相关推荐产品”卡片契约。
+
+    这里单独建 schema，而不是继续复用 `ProductSummarySchema`，因为详情页
+    卡片除了标题和摘要，还需要 eyebrow 与图片。
+    """
+
+    id: int
+    name: str
+    slug: str
+    url_path: str
+    summary: str
+    eyebrow: str
+    image_url: str
+    image_alt: str
+
+
+class RelatedResourceCardSchema(Schema):
+    """
+    产品详情页“相关资源”卡片契约。
+
+    资源卡片的 eyebrow 这轮固定走前端约定语义，但图片与链接仍由后端
+    统一给出，避免前端再猜资源卡应该取哪张图。
+    """
+
+    id: int
+    title: str
+    slug: str
+    url_path: str
+    summary: str
+    eyebrow: str
+    image_url: str
+    image_alt: str
+
+
 class ProductDetailSchema(Schema):
     id: int
     name: str
@@ -178,6 +221,7 @@ class ProductDetailSchema(Schema):
     slug: str
     url_path: str
     h1: str
+    hero_eyebrow: str
     lead_text: str
     seo_title: str
     meta_description: str
@@ -199,6 +243,6 @@ class ProductDetailSchema(Schema):
     use_cases: list[ProductUseCaseSchema]
     media_items: list[ProductMediaSchema]
     downloads: list[ProductDownloadSchema]
-    related_products: list[ProductSummarySchema]
-    related_resources: list[RelatedResourceSchema]
+    related_products: list[RelatedProductCardSchema]
+    related_resources: list[RelatedResourceCardSchema]
     faq_items: list[FAQSchema]

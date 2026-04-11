@@ -5,6 +5,7 @@ from typing import Any
 from ninja import Query, Router
 
 from apps.catalog.schemas import (
+    CategoryPathSchema,
     CategoryProductListQuerySchema,
     ProductCategoryDetailSchema,
     ProductCategoryListingResponseSchema,
@@ -15,10 +16,19 @@ from apps.catalog.services import (
     get_category_detail,
     get_category_product_listing,
     get_product_detail,
+    list_category_paths,
     list_product_paths,
 )
 
 router = Router(tags=["catalog"])
+
+
+@router.get("/categories/paths", response=list[CategoryPathSchema])
+def get_category_paths(request: Any) -> list[CategoryPathSchema]:
+    # 这个接口只给前端静态发现分类 slug 使用。
+    # payload 故意保持极小，避免构建期为了路由发现去拉整份分类页内容。
+    del request
+    return list_category_paths()
 
 
 @router.get("/categories/{slug}", response=ProductCategoryDetailSchema)
@@ -26,6 +36,9 @@ def get_category(request: Any, slug: str) -> ProductCategoryDetailSchema:
     # 分类基础信息 / guide 内容与分页列表内容刻意拆开。
     # 前端分类介绍页走这个接口，真正的产品列表和分页走
     # `/categories/{slug}/products`，避免一个接口承担两种页面职责。
+    #
+    # 这里把静态 `/categories/paths` 放在前面，是为了避免像 `paths`
+    # 这样的固定片段被动态 slug 路由误吞掉。
     del request
     return get_category_detail(slug)
 

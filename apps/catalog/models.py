@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from enum import IntEnum
 
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -61,6 +62,26 @@ class ProductMediaKind(ChoicesMixin, IntEnum):
             cls.GALLERY.value: "gallery",
             cls.DETAIL.value: "detail",
             cls.VIDEO.value: "video",
+        }
+
+
+class ProductSeries(ChoicesMixin, IntEnum):
+    COUNTERTOP = 1
+    INDUSTRIAL = 2
+
+    @classmethod
+    def choices(cls):
+        names = {
+            cls.COUNTERTOP: "COUNTERTOP SERIES",
+            cls.INDUSTRIAL: "INDUSTRIAL SERIES",
+        }
+        return [(member.value, names[member]) for member in cls]
+
+    @classmethod
+    def codes(cls):
+        return {
+            cls.COUNTERTOP.value: "countertop",
+            cls.INDUSTRIAL.value: "industrial",
         }
 
 
@@ -145,6 +166,8 @@ class ProductCategory(SeoFieldsMixin):
 
 
 class Product(SeoFieldsMixin):
+    Series = ProductSeries
+
     category = models.ForeignKey(
         ProductCategory,
         verbose_name=_("产品分类"),
@@ -155,6 +178,13 @@ class Product(SeoFieldsMixin):
     )
     name = models.CharField(_("产品名称"), max_length=255)
     model_code = models.CharField(_("型号"), max_length=120, blank=True)
+    series = models.PositiveSmallIntegerField(
+        _("产品系列"),
+        choices=ProductSeries.choices,
+        default=ProductSeries.COUNTERTOP,
+        db_index=True,
+        help_text="用于产品列表和相关推荐卡片的货架标签。",
+    )
     summary = models.TextField(
         _("摘要"),
         blank=True,
@@ -211,6 +241,12 @@ class Product(SeoFieldsMixin):
         ),
     )
     is_canonical = models.BooleanField(_("是否 canonical"), default=True, db_index=True)
+    faq_items = GenericRelation(
+        "content.FAQItem",
+        related_query_name="product",
+        content_type_field="content_type",
+        object_id_field="object_id",
+    )
 
     class Meta:
         db_table = "product"
@@ -227,6 +263,14 @@ class Product(SeoFieldsMixin):
 
     def __str__(self) -> str:
         return self.name
+
+    @property
+    def series_code(self) -> str:
+        return ProductSeries.code_of(self.series)
+
+    @property
+    def series_label(self) -> str:
+        return ProductSeries.label_of(self.series).upper()
 
 
 class ProductVariant(PublishableModel, OrderedModel):

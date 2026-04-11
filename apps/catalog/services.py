@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from django.db.models import Prefetch
+from django.contrib.contenttypes.models import ContentType
+from django.db.models import OuterRef, Prefetch, Subquery
 from ninja.errors import HttpError
 
 from apps.catalog.models import (
@@ -17,7 +18,10 @@ from apps.catalog.models import (
     ProductUseCase,
     ProductVariant,
 )
+from apps.content.models import FAQItem, ResourceArticle
+from apps.core.models import PageSEO
 from apps.catalog.schemas import (
+    CategoryPathSchema,
     CatalogPaginationSchema,
     ProductCardMetricSchema,
     ProductCategoryDetailSchema,
@@ -28,13 +32,15 @@ from apps.catalog.schemas import (
     ProductListingItemSchema,
     ProductMediaSchema,
     ProductPathSchema,
+    RelatedProductCardSchema,
+    RelatedResourceCardSchema,
     ProductSpecGroupSchema,
     ProductSpecRowSchema,
     ProductUseCaseSchema,
     ProductVariantSchema,
 )
-from common.api_schemas import ProductBreadcrumbSchema, RelatedResourceSchema
-from common.presenters import serialize_asset, serialize_category_card, serialize_faqs_for, serialize_product_summary
+from common.api_schemas import FAQSchema, ProductBreadcrumbSchema
+from common.presenters import serialize_asset, serialize_category_card, serialize_product_summary
 from utils.ninja_pagination import PaginationWindow
 from utils.ninja_views import NinjaPaginationMixin
 
@@ -55,6 +61,8 @@ LISTING_METRIC_PRIORITY = (
     "power",
 )
 LISTING_METRIC_LIMIT = 3
+RELATED_RESOURCE_EYEBROW = "RESOURCE CENTER"
+PRODUCT_DETAIL_FAQ_LIMIT = 3
 
 
 class CategoryProductListingContract(NinjaPaginationMixin):
@@ -105,6 +113,16 @@ def _format_spec_row_value(row: ProductSpecRow) -> str:
     return f"{row.value} {row.unit}".strip()
 
 
+def _serialize_spec_row(row: ProductSpecRow) -> ProductSpecRowSchema:
+    return ProductSpecRowSchema(
+        id=row.id,
+        label=row.label,
+        value=row.value,
+        unit=row.unit or "",
+        is_highlight=row.is_highlight,
+    )
+
+
 def _iter_listing_rows(product: Product) -> Iterable[ProductSpecRow]:
     """
     Yield prefetched spec rows in display order.
@@ -116,6 +134,113 @@ def _iter_listing_rows(product: Product) -> Iterable[ProductSpecRow]:
     for group in getattr(product, "listing_spec_groups", []):
         for row in getattr(group, "ordered_rows", []):
             yield row
+
+
+def _iter_detail_rows(product: Product) -> Iterable[ProductSpecRow]:
+    for group in getattr(product, "ordered_spec_groups", []):
+        for row in getattr(group, "ordered_rows", []):
+            yield row
+
+
+def _serialize_detail_quick_facts(product: Product) -> list[ProductSpecRowSchema]:
+    """
+    从已经预取好的规格组里提取 Hero quick facts。
+
+    这样可以避免详情页再为高亮规格单独打一条 SQL，同时保持
+    `quick_facts` 和 `spec_groups` 使用同一份结构化来源。
+    """
+
+    quick_fact_rows = [
+        row
+        for group in getattr(product, "ordered_spec_groups", [])
+        if group.group_kind_code == "quick_facts"
+        for row in getattr(group, "ordered_rows", [])
+        if row.is_highlight
+    ]
+
+    if not quick_fact_rows:
+        quick_fact_rows = [row for row in _iter_detail_rows(product) if row.is_highlight]
+
+    return [_serialize_spec_row(row) for row in quick_fact_rows]
+
+
+def _serialize_product_detail_faqs(product: Product) -> list[FAQSchema]:
+    """
+    产品详情页需要返回绑定到该 Product 的全部 FAQ。
+
+    这里故意不复用 `common.presenters.serialize_faqs_for()`，因为后者
+    当前仍保留“只返回精选 FAQ”的更通用语义；详情页是特例，需要把
+    录入在产品下的完整问题集合都交给前端排序和首条默认展开。
+    """
+
+    product_content_type = ContentType.objects.get_for_model(product, for_concrete_model=False)
+    faqs = FAQItem.objects.filter(
+        content_type=product_content_type,
+        object_id=product.id,
+    ).order_by("sort_order", "id")[:PRODUCT_DETAIL_FAQ_LIMIT]
+    return [FAQSchema(id=faq.id, question=faq.question, answer=faq.answer) for faq in faqs]
+
+
+def _resolve_card_image(image_url: str | None, image_alt: str | None, fallback_alt: str) -> tuple[str, str]:
+    return image_url or "", image_alt or fallback_alt
+
+
+def _serialize_related_product_cards(relations: Iterable[ProductRelation]) -> list[RelatedProductCardSchema]:
+    cards: list[RelatedProductCardSchema] = []
+
+    for relation in relations:
+        related_product = relation.related_product
+        if not related_product:
+            continue
+
+        image_url, image_alt = _resolve_card_image(
+            getattr(relation, "related_product_image_url", ""),
+            getattr(relation, "related_product_image_alt", ""),
+            related_product.name,
+        )
+        cards.append(
+            RelatedProductCardSchema(
+                id=related_product.id,
+                name=related_product.name,
+                slug=related_product.slug,
+                url_path=related_product.url_path,
+                summary=related_product.summary or related_product.lead_text or "",
+                eyebrow=related_product.series_label or related_product.category.name,
+                image_url=image_url,
+                image_alt=image_alt,
+            )
+        )
+
+    return cards
+
+
+def _serialize_related_resource_cards(relations: Iterable[ProductRelation]) -> list[RelatedResourceCardSchema]:
+    cards: list[RelatedResourceCardSchema] = []
+
+    for relation in relations:
+        related_resource = relation.related_resource
+        if not related_resource:
+            continue
+
+        image_url, image_alt = _resolve_card_image(
+            getattr(relation, "related_resource_image_url", ""),
+            getattr(relation, "related_resource_image_alt", ""),
+            related_resource.title,
+        )
+        cards.append(
+            RelatedResourceCardSchema(
+                id=related_resource.id,
+                title=related_resource.title,
+                slug=related_resource.slug,
+                url_path=related_resource.url_path,
+                summary=related_resource.summary or related_resource.lead_text or "",
+                eyebrow=RELATED_RESOURCE_EYEBROW,
+                image_url=image_url,
+                image_alt=image_alt,
+            )
+        )
+
+    return cards
 
 
 def _serialize_listing_metrics(product: Product) -> list[ProductCardMetricSchema]:
@@ -176,10 +301,7 @@ def _serialize_listing_item(product: Product) -> ProductListingItemSchema:
         summary=product.summary or product.lead_text or "",
         card_image_url=image_url,
         card_image_alt=image_alt,
-        # 这些字段给后续运营编排/货架规则预留。
-        # 当前返回 None 是刻意选择，不是遗漏；这样接口形状先稳定下来，
-        # 又不会为了凑字段而伪造业务数据。
-        series_label=None,
+        series_label=product.series_label,
         badge_label=None,
         badge_tone=None,
         metrics=_serialize_listing_metrics(product),
@@ -340,7 +462,35 @@ def list_product_paths() -> list[ProductPathSchema]:
     ]
 
 
+def list_category_paths() -> list[CategoryPathSchema]:
+    """
+    返回前端分类静态路由发现所需的最小路径信息。
+
+    这里只返回 slug 和 url_path，避免把分类 Hero、摘要、产品列表等更重
+    的字段混进构建期路径发现流程。
+    """
+
+    queryset = (
+        ProductCategory.objects.filter(status=ProductCategory.Status.PUBLISHED)
+        .only("slug", "url_path")
+        .order_by("slug")
+    )
+
+    return [CategoryPathSchema(slug=category.slug, url_path=category.url_path) for category in queryset]
+
+
 def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSchema:
+    resource_content_type = ContentType.objects.get_for_model(ResourceArticle, for_concrete_model=False)
+    related_product_media_queryset = ProductMedia.objects.filter(
+        product_id=OuterRef("related_product_id"),
+        asset__isnull=False,
+    ).order_by("-is_primary", "sort_order", "id")
+    related_resource_seo_queryset = PageSEO.objects.filter(
+        content_type=resource_content_type,
+        object_id=OuterRef("related_resource_id"),
+        og_image__isnull=False,
+    ).order_by("id")
+
     product = (
         Product.objects.filter(
             category__slug=category_slug,
@@ -380,7 +530,7 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
             ),
             Prefetch(
                 "media_items",
-                queryset=ProductMedia.objects.select_related("asset").order_by("sort_order", "id"),
+                queryset=ProductMedia.objects.select_related("asset").order_by("-is_primary", "sort_order", "id"),
                 to_attr="ordered_media_items",
             ),
             Prefetch(
@@ -396,7 +546,13 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
                     related_product__status=Product.Status.PUBLISHED,
                     related_product__is_canonical=True,
                 )
-                .select_related("related_product")
+                .select_related("related_product", "related_product__category")
+                .annotate(
+                    related_product_image_url=Subquery(related_product_media_queryset.values("asset__file_url")[:1]),
+                    related_product_image_alt=Subquery(
+                        related_product_media_queryset.values("asset__alt_text")[:1]
+                    ),
+                )
                 .order_by("sort_order", "id"),
                 to_attr="related_product_relations",
             ),
@@ -405,9 +561,13 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
                 queryset=ProductRelation.objects.filter(
                     relation_type=ProductRelation.RelationType.RELATED_RESOURCE,
                     related_resource__isnull=False,
-                    related_resource__status=Product.Status.PUBLISHED,
+                    related_resource__status=ResourceArticle.Status.PUBLISHED,
                 )
                 .select_related("related_resource")
+                .annotate(
+                    related_resource_image_url=Subquery(related_resource_seo_queryset.values("og_image__file_url")[:1]),
+                    related_resource_image_alt=Subquery(related_resource_seo_queryset.values("og_image__alt_text")[:1]),
+                )
                 .order_by("sort_order", "id"),
                 to_attr="related_resource_relations",
             ),
@@ -417,16 +577,6 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
     if not product:
         raise HttpError(404, "Product not found.")
 
-    quick_facts = ProductSpecRow.objects.filter(
-        group__product=product,
-        is_highlight=True,
-    ).select_related("group").order_by("group__sort_order", "sort_order", "id")
-
-    related_products = [relation.related_product for relation in product.related_product_relations if relation.related_product]
-    related_resources = [
-        relation.related_resource for relation in product.related_resource_relations if relation.related_resource
-    ]
-
     return ProductDetailSchema(
         id=product.id,
         name=product.name,
@@ -434,6 +584,8 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
         slug=product.slug,
         url_path=product.url_path,
         h1=product.h1,
+        # Hero eyebrow 仍然表达产品所属分类；series_label 只用于列表和相关产品卡片货架标签。
+        hero_eyebrow=product.category.name,
         lead_text=product.lead_text or "",
         seo_title=product.seo_title,
         meta_description=product.meta_description,
@@ -444,8 +596,11 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
         customization_support=product.customization_support or "",
         packing_shipping=product.packing_shipping or "",
         after_sales_support=product.after_sales_support or "",
-        quote_cta_title=product.quote_cta_title or "",
-        quote_cta_body=product.quote_cta_body or "",
+        # 这两个字段在现阶段前端并未消费，而且历史数据库与当前 model
+        # 定义存在短暂错位，因此这里用 getattr 做向后兼容，避免详情接口
+        # 因旧数据或未对齐字段直接报 500。
+        quote_cta_title=getattr(product, "quote_cta_title", "") or "",
+        quote_cta_body=getattr(product, "quote_cta_body", "") or "",
         category=serialize_category_card(product.category),
         breadcrumbs=[
             ProductBreadcrumbSchema(title="Home", url_path="/"),
@@ -465,31 +620,13 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
             )
             for variant in product.published_variants
         ],
-        quick_facts=[
-            ProductSpecRowSchema(
-                id=row.id,
-                label=row.label,
-                value=row.value,
-                unit=row.unit or "",
-                is_highlight=row.is_highlight,
-            )
-            for row in quick_facts
-        ],
+        quick_facts=_serialize_detail_quick_facts(product),
         spec_groups=[
             ProductSpecGroupSchema(
                 id=group.id,
                 title=group.title,
                 group_kind_code=group.group_kind_code,
-                rows=[
-                    ProductSpecRowSchema(
-                        id=row.id,
-                        label=row.label,
-                        value=row.value,
-                        unit=row.unit or "",
-                        is_highlight=row.is_highlight,
-                    )
-                    for row in group.ordered_rows
-                ],
+                rows=[_serialize_spec_row(row) for row in group.ordered_rows],
             )
             for group in product.ordered_spec_groups
         ],
@@ -498,7 +635,12 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
             for feature in product.ordered_features
         ],
         use_cases=[
-            ProductUseCaseSchema(id=item.id, title=item.title, summary=item.summary)
+            ProductUseCaseSchema(
+                id=item.id,
+                icon=item.icon or "",
+                title=item.title,
+                summary=item.summary,
+            )
             for item in product.ordered_use_cases
         ],
         media_items=[
@@ -520,18 +662,7 @@ def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSc
             )
             for item in product.ordered_downloads
         ],
-        related_products=[serialize_product_summary(item) for item in related_products if item],
-        related_resources=[
-            RelatedResourceSchema(
-                id=item.id,
-                title=item.title,
-                slug=item.slug,
-                url_path=item.url_path,
-                summary=item.summary or "",
-                resource_type=item.resource_type_code,
-            )
-            for item in related_resources
-            if item
-        ],
-        faq_items=serialize_faqs_for(product),
+        related_products=_serialize_related_product_cards(product.related_product_relations),
+        related_resources=_serialize_related_resource_cards(product.related_resource_relations),
+        faq_items=_serialize_product_detail_faqs(product),
     )

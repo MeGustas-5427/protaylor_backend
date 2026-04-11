@@ -1,5 +1,9 @@
 from django.contrib import admin
+from django.contrib.contenttypes.admin import GenericTabularInline
+from django.contrib.contenttypes.forms import BaseGenericInlineFormSet
+from django.core.exceptions import ValidationError
 
+from apps.content.models import FAQItem
 from .models import (
     Product,
     ProductCategory,
@@ -14,8 +18,50 @@ from .models import (
 )
 
 
+PRODUCT_TECHNICAL_FAQ_SORT_ORDERS = {10, 20, 30}
+
+
 class TimestampReadonlyAdminMixin:
     readonly_fields = ("created_at", "updated_at")
+
+
+class ProductFaqInlineFormSet(BaseGenericInlineFormSet):
+    def clean(self) -> None:
+        super().clean()
+        if any(self.errors):
+            return
+
+        active_rows = 0
+        sort_orders: list[int] = []
+        for form in self.forms:
+            cleaned_data = getattr(form, "cleaned_data", None)
+            if not cleaned_data or cleaned_data.get("DELETE"):
+                continue
+
+            question = (cleaned_data.get("question") or "").strip()
+            answer = (cleaned_data.get("answer") or "").strip()
+            if not question and not answer:
+                continue
+            if not question or not answer:
+                raise ValidationError("Each Technical Inquiry FAQ row requires both question and answer.")
+
+            active_rows += 1
+            sort_orders.append(int(cleaned_data.get("sort_order") or 0))
+
+        if len(set(sort_orders)) != len(sort_orders):
+            raise ValidationError("Technical Inquiry FAQ sort_order values must be unique per product.")
+
+        invalid_sort_orders = [value for value in sort_orders if value not in PRODUCT_TECHNICAL_FAQ_SORT_ORDERS]
+        if invalid_sort_orders:
+            raise ValidationError("Technical Inquiry FAQ sort_order values must be 10, 20, and 30.")
+
+        if (
+            isinstance(self.instance, Product)
+            and self.instance.status == Product.Status.PUBLISHED
+            and self.instance.is_canonical
+            and active_rows != 3
+        ):
+            raise ValidationError("Published canonical products must keep exactly three Technical Inquiry FAQ rows.")
 
 
 class ProductVariantInline(admin.TabularInline):
@@ -34,6 +80,19 @@ class ProductUseCaseInline(admin.TabularInline):
     model = ProductUseCase
     extra = 0
     show_change_link = True
+
+
+class ProductFaqInline(GenericTabularInline):
+    model = FAQItem
+    formset = ProductFaqInlineFormSet
+    ct_field = "content_type"
+    ct_fk_field = "object_id"
+    extra = 0
+    fields = ("question", "answer", "sort_order")
+    ordering = ("sort_order", "id")
+    show_change_link = True
+    verbose_name = "Technical Inquiry FAQ"
+    verbose_name_plural = "Technical Inquiry FAQ"
 
 
 class ProductMediaInline(admin.TabularInline):
@@ -113,14 +172,15 @@ class ProductCategoryAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
-    list_display = ("name", "category", "model_code", "status", "is_canonical")
-    list_filter = ("status", "is_canonical", "category")
+    list_display = ("name", "category", "model_code", "series_label", "status", "is_canonical")
+    list_filter = ("status", "is_canonical", "series", "category")
     search_fields = ("name", "model_code", "slug", "primary_query")
     list_select_related = ("category",)
     inlines = (
         ProductVariantInline,
         ProductFeatureInline,
         ProductUseCaseInline,
+        ProductFaqInline,
         ProductMediaInline,
         ProductDownloadInline,
         ProductRelationInline,
@@ -135,6 +195,7 @@ class ProductAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
                     "category",
                     "name",
                     "model_code",
+                    "series",
                     "slug",
                     "status",
                     "is_canonical",
