@@ -22,6 +22,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Q
 
 
 DEFAULT_EXCEL_PATH = Path(r"F:\菱威仓管\protaylor_product_media_import.xlsx")
@@ -103,7 +104,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options) -> None:
         from openpyxl import load_workbook
 
-        from apps.catalog.models import Product, ProductCategory, ProductMedia
+        from apps.catalog.models import Product, ProductMedia
         from apps.core.models import MediaAsset
 
         excel_path = self._resolve_excel_path(options.get("excel"))
@@ -139,28 +140,34 @@ class Command(BaseCommand):
         }
         asset_stats = self._plan_asset_changes(existing_assets, asset_records)
 
-        category_names = {product_key.category_name for product_key in product_media_by_product}
-        categories_by_name: dict[str, list[ProductCategory]] = defaultdict(list)
-        for category in ProductCategory.objects.filter(name__in=category_names):
-            categories_by_name[category.name].append(category)
-
-        unique_category_ids = [
-            matches[0].id for matches in categories_by_name.values() if len(matches) == 1
-        ]
         product_names = {product_key.product_name for product_key in product_media_by_product}
-        products_by_key: dict[tuple[int, str], list[Product]] = defaultdict(list)
-        for product in Product.objects.filter(
-            category_id__in=unique_category_ids,
-            name__in=product_names,
-        ).select_related("category"):
-            products_by_key[(product.category_id, product.name)].append(product)
+        source_product_urls = {
+            row.source_product_url
+            for rows in product_media_by_product.values()
+            for row in rows
+            if row.source_product_url
+        }
+        product_query = Product.objects.all()
+        if source_product_urls:
+            product_query = product_query.filter(
+                Q(source_url__in=source_product_urls) | Q(name__in=product_names)
+            )
+        else:
+            product_query = product_query.filter(name__in=product_names)
+
+        products_by_name: dict[str, list[Product]] = defaultdict(list)
+        products_by_source_url: dict[str, list[Product]] = defaultdict(list)
+        for product in product_query.select_related("category"):
+            products_by_name[product.name].append(product)
+            if product.source_url:
+                products_by_source_url[product.source_url].append(product)
 
         matched_products = 0
         replaced_products = 0
         skipped_products = 0
         unmatched_products: list[str] = []
-        ambiguous_categories: list[str] = []
         ambiguous_products: list[str] = []
+        category_warnings: list[str] = []
         model_code_warnings: list[str] = []
 
         matched_product_payloads: list[tuple[Product, list[ProductMediaImportRecord]]] = []
@@ -169,22 +176,34 @@ class Command(BaseCommand):
             product_media_by_product.keys(),
             key=lambda item: (item.category_name.lower(), item.product_name.lower()),
         ):
-            category_matches = categories_by_name.get(product_key.category_name, [])
-            if len(category_matches) == 0:
-                skipped_products += 1
-                unmatched_products.append(
-                    f"{product_key.category_name} / {product_key.product_name}：未找到分类"
-                )
-                continue
-            if len(category_matches) > 1:
-                skipped_products += 1
-                ambiguous_categories.append(
-                    f"{product_key.category_name} / {product_key.product_name}：分类名重复，无法唯一匹配"
-                )
-                continue
+            media_rows = product_media_by_product[product_key]
+            workbook_source_url = next(
+                (row.source_product_url for row in media_rows if row.source_product_url),
+                "",
+            )
+            if workbook_source_url:
+                product_matches = products_by_source_url.get(workbook_source_url, [])
+                if len(product_matches) > 1:
+                    skipped_products += 1
+                    ambiguous_products.append(
+                        f"{product_key.category_name} / {product_key.product_name}："
+                        f"Source Product URL {workbook_source_url!r} 匹配到多个产品"
+                    )
+                    continue
+            else:
+                product_matches = []
 
-            category = category_matches[0]
-            product_matches = products_by_key.get((category.id, product_key.product_name), [])
+            if not product_matches:
+                product_matches = products_by_name.get(product_key.product_name, [])
+                if len(product_matches) > 1:
+                    narrowed_matches = [
+                        product
+                        for product in product_matches
+                        if product.category.name == product_key.category_name
+                    ]
+                    if narrowed_matches:
+                        product_matches = narrowed_matches
+
             if len(product_matches) == 0:
                 skipped_products += 1
                 unmatched_products.append(
@@ -194,13 +213,17 @@ class Command(BaseCommand):
             if len(product_matches) > 1:
                 skipped_products += 1
                 ambiguous_products.append(
-                    f"{product_key.category_name} / {product_key.product_name}：产品名重复，无法唯一匹配"
+                    f"{product_key.category_name} / {product_key.product_name}：产品匹配不唯一"
                 )
                 continue
 
             product = product_matches[0]
             matched_products += 1
-            media_rows = product_media_by_product[product_key]
+            if product.category.name != product_key.category_name:
+                category_warnings.append(
+                    f"{product_key.category_name} / {product_key.product_name}："
+                    f"Excel 分类={product_key.category_name!r}，数据库分类={product.category.name!r}"
+                )
             workbook_model_code = next((row.model_code for row in media_rows if row.model_code), "")
             if workbook_model_code and workbook_model_code != (product.model_code or ""):
                 model_code_warnings.append(
@@ -247,19 +270,19 @@ class Command(BaseCommand):
             if len(unmatched_products) > 100:
                 self.stdout.write(f"  ... {len(unmatched_products) - 100} more")
 
-        if ambiguous_categories:
-            self.stdout.write(self.style.WARNING("\nAmbiguous categories"))
-            for item in ambiguous_categories[:100]:
-                self.stdout.write(f"  - {item}")
-            if len(ambiguous_categories) > 100:
-                self.stdout.write(f"  ... {len(ambiguous_categories) - 100} more")
-
         if ambiguous_products:
             self.stdout.write(self.style.WARNING("\nAmbiguous products"))
             for item in ambiguous_products[:100]:
                 self.stdout.write(f"  - {item}")
             if len(ambiguous_products) > 100:
                 self.stdout.write(f"  ... {len(ambiguous_products) - 100} more")
+
+        if category_warnings:
+            self.stdout.write(self.style.WARNING("\nCategory warnings"))
+            for item in category_warnings[:100]:
+                self.stdout.write(f"  - {item}")
+            if len(category_warnings) > 100:
+                self.stdout.write(f"  ... {len(category_warnings) - 100} more")
 
         if model_code_warnings:
             self.stdout.write(self.style.WARNING("\nModel code warnings"))

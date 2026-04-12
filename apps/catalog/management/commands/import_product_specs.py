@@ -10,7 +10,8 @@ Django 管理命令：从 reviewed 规格工作簿导入产品规格。
     - 只导入 ProductSpecGroup / ProductSpecRow
     - 输入工作簿必须包含 SpecGroups / SpecRows 两个 sheet
     - 允许存在 ReviewSummary / RuleNotes 等附加 sheet，命令会忽略它们
-    - 产品匹配键使用：分类名 + 产品名
+    - 产品优先按 Product URL 匹配，未命中时回退到产品名
+    - Category / Model Code 只做校验告警，不再承担主匹配键
     - 采用“整产品覆盖”策略：命中产品后先删除旧规格，再按 Excel 重建
     - 若某个产品在表里没有任何有效规格行，则跳过该产品，不清空数据库原有规格
 """
@@ -24,6 +25,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Q
 
 
 DEFAULT_EXCEL_PATH = Path(r"F:\菱威仓管\protaylor_product_specs_reviewed_v3.xlsx")
@@ -34,6 +36,7 @@ GROUP_HEADERS = (
     "Category",
     "Subcategory",
     "Product Name",
+    "Product URL",
     "Model Code",
     "Group Title",
     "Group Kind Code",
@@ -43,6 +46,7 @@ ROW_HEADERS = (
     "Category",
     "Subcategory",
     "Product Name",
+    "Product URL",
     "Model Code",
     "Group Title",
     "Group Kind Code",
@@ -71,6 +75,7 @@ class GroupSheetKey:
 @dataclass(frozen=True)
 class GroupImportRecord:
     key: GroupSheetKey
+    product_url: str
     model_code: str
     sort_order: int
 
@@ -104,7 +109,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options) -> None:
         from openpyxl import load_workbook
 
-        from apps.catalog.models import Product, ProductCategory, ProductSpecGroup, ProductSpecGroupKind, ProductSpecRow
+        from apps.catalog.models import Product, ProductSpecGroup, ProductSpecGroupKind, ProductSpecRow
 
         excel_path = self._resolve_excel_path(options.get("excel"))
         dry_run = bool(options["dry_run"])
@@ -131,6 +136,7 @@ class Command(BaseCommand):
 
             group_record = GroupImportRecord(
                 key=group_key,
+                product_url=_clean_text(raw_record.get("Product URL", "")),
                 model_code=_clean_text(raw_record["Model Code"]),
                 sort_order=self._parse_int(
                     raw_record["Group Sort Order"],
@@ -189,8 +195,8 @@ class Command(BaseCommand):
         products_without_valid_rows = 0
         skipped_empty_products = 0
         unmatched_products: list[str] = []
-        ambiguous_categories: list[str] = []
         ambiguous_products: list[str] = []
+        category_warnings: list[str] = []
         empty_products: list[str] = []
         model_code_warnings: list[str] = []
 
@@ -203,44 +209,63 @@ class Command(BaseCommand):
             "technical": ProductSpecGroupKind.TECHNICAL,
         }
 
-        # 这里先把分类和产品一次性批量拉进内存，避免 600+ 产品导入时
-        # 变成“每个产品都去远程 PostgreSQL 查 2-4 次”的 N+1 风格慢查询。
-        category_names = {product_key.category_name for product_key in group_records_by_product}
-        categories_by_name: dict[str, list[ProductCategory]] = defaultdict(list)
-        for category in ProductCategory.objects.filter(name__in=category_names):
-            categories_by_name[category.name].append(category)
-
-        unique_category_ids = [
-            categories[0].id for categories in categories_by_name.values() if len(categories) == 1
-        ]
         product_names = {product_key.product_name for product_key in group_records_by_product}
-        products_by_key: dict[tuple[int, str], list[Product]] = defaultdict(list)
-        for product in Product.objects.filter(
-            category_id__in=unique_category_ids,
-            name__in=product_names,
-        ).select_related("category"):
-            products_by_key[(product.category_id, product.name)].append(product)
+        product_urls = {
+            group_record.product_url
+            for group_records in group_records_by_product.values()
+            for group_record in group_records
+            if group_record.product_url
+        }
+        product_query = Product.objects.all()
+        if product_urls:
+            product_query = product_query.filter(
+                Q(source_url__in=product_urls) | Q(name__in=product_names)
+            )
+        else:
+            product_query = product_query.filter(name__in=product_names)
+
+        products_by_name: dict[str, list[Product]] = defaultdict(list)
+        products_by_source_url: dict[str, list[Product]] = defaultdict(list)
+        for product in product_query.select_related("category"):
+            products_by_name[product.name].append(product)
+            if product.source_url:
+                products_by_source_url[product.source_url].append(product)
 
         for product_key in sorted(
             group_records_by_product.keys(),
             key=lambda item: (item.category_name.lower(), item.product_name.lower()),
         ):
-            category_matches = categories_by_name.get(product_key.category_name, [])
-            if len(category_matches) == 0:
-                skipped_products += 1
-                unmatched_products.append(
-                    f"{product_key.category_name} / {product_key.product_name}：未找到分类"
-                )
-                continue
-            if len(category_matches) > 1:
-                skipped_products += 1
-                ambiguous_categories.append(
-                    f"{product_key.category_name} / {product_key.product_name}：分类名重复，无法唯一匹配"
-                )
-                continue
-            category = category_matches[0]
+            product_group_records = sorted(
+                group_records_by_product[product_key],
+                key=lambda record: (record.sort_order, record.key.group_title.lower()),
+            )
+            workbook_product_url = next(
+                (record.product_url for record in product_group_records if record.product_url),
+                "",
+            )
+            if workbook_product_url:
+                product_matches = products_by_source_url.get(workbook_product_url, [])
+                if len(product_matches) > 1:
+                    skipped_products += 1
+                    ambiguous_products.append(
+                        f"{product_key.category_name} / {product_key.product_name}："
+                        f"Product URL {workbook_product_url!r} 匹配到多个产品"
+                    )
+                    continue
+            else:
+                product_matches = []
 
-            product_matches = products_by_key.get((category.id, product_key.product_name), [])
+            if not product_matches:
+                product_matches = products_by_name.get(product_key.product_name, [])
+                if len(product_matches) > 1:
+                    narrowed_matches = [
+                        product
+                        for product in product_matches
+                        if product.category.name == product_key.category_name
+                    ]
+                    if narrowed_matches:
+                        product_matches = narrowed_matches
+
             if len(product_matches) == 0:
                 skipped_products += 1
                 unmatched_products.append(
@@ -256,11 +281,12 @@ class Command(BaseCommand):
 
             product = product_matches[0]
             matched_products += 1
+            if product.category.name != product_key.category_name:
+                category_warnings.append(
+                    f"{product_key.category_name} / {product_key.product_name}："
+                    f"Excel 分类={product_key.category_name!r}，数据库分类={product.category.name!r}"
+                )
 
-            product_group_records = sorted(
-                group_records_by_product[product_key],
-                key=lambda record: (record.sort_order, record.key.group_title.lower()),
-            )
             valid_group_payloads: list[tuple[GroupImportRecord, list[RowImportRecord]]] = []
             for group_record in product_group_records:
                 rows = sorted(
@@ -278,10 +304,6 @@ class Command(BaseCommand):
                 )
                 continue
 
-            # 这里故意不用 Product URL / Product Slug 做主匹配：
-            # 1. 现有 import_products.py 没把 source_url 回填进数据库；
-            # 2. 导入表里的 Product Slug 与历史 slugify 规则并不完全一致。
-            # 当前最稳定的定位方式，是“分类名 + 产品名”在现有库中的唯一组合。
             if self._has_model_code_mismatch(product_group_records, product.model_code):
                 workbook_model_code = next(
                     (record.model_code for record in product_group_records if record.model_code),
@@ -335,14 +357,14 @@ class Command(BaseCommand):
             for item in unmatched_products:
                 self.stdout.write(f"  - {item}")
 
-        if ambiguous_categories:
-            self.stdout.write(self.style.WARNING("\nAmbiguous categories"))
-            for item in ambiguous_categories:
-                self.stdout.write(f"  - {item}")
-
         if ambiguous_products:
             self.stdout.write(self.style.WARNING("\nAmbiguous products"))
             for item in ambiguous_products:
+                self.stdout.write(f"  - {item}")
+
+        if category_warnings:
+            self.stdout.write(self.style.WARNING("\nCategory warnings"))
+            for item in category_warnings:
                 self.stdout.write(f"  - {item}")
 
         if empty_products:

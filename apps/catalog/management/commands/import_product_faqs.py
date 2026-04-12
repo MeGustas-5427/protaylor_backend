@@ -18,6 +18,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from django.db.models import Count
+from django.db.models import Q
 
 
 DEFAULT_EXCEL_PATH = Path(r"F:\菱威仓管\protaylor_product_technical_inquiry_faqs.xlsx")
@@ -91,7 +92,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options) -> None:
         from openpyxl import load_workbook
 
-        from apps.catalog.models import Product, ProductCategory
+        from apps.catalog.models import Product
         from apps.content.models import FAQItem
 
         excel_path = self._resolve_excel_path(options.get("excel"))
@@ -107,47 +108,59 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN - no database writes."))
 
-        category_names = {key.category_name for key in faq_rows_by_product}
-        categories_by_name: dict[str, list[ProductCategory]] = defaultdict(list)
-        for category in ProductCategory.objects.filter(name__in=category_names):
-            categories_by_name[category.name].append(category)
-
-        unique_category_ids = [matches[0].id for matches in categories_by_name.values() if len(matches) == 1]
         product_names = {key.product_name for key in faq_rows_by_product}
-        products_by_key: dict[tuple[int, str], list[Product]] = defaultdict(list)
+        source_product_urls = {
+            row.source_product_url
+            for rows in faq_rows_by_product.values()
+            for row in rows
+            if row.source_product_url
+        }
+        product_query = Product.objects.all()
+        if source_product_urls:
+            product_query = product_query.filter(
+                Q(source_url__in=source_product_urls) | Q(name__in=product_names)
+            )
+        else:
+            product_query = product_query.filter(name__in=product_names)
+
+        products_by_name: dict[str, list[Product]] = defaultdict(list)
         products_by_source_url: dict[str, list[Product]] = defaultdict(list)
-        for product in Product.objects.filter(category_id__in=unique_category_ids, name__in=product_names).select_related("category"):
-            products_by_key[(product.category_id, product.name)].append(product)
+        for product in product_query.select_related("category"):
+            products_by_name[product.name].append(product)
             if product.source_url:
                 products_by_source_url[product.source_url].append(product)
 
         product_ct = ContentType.objects.get_for_model(Product, for_concrete_model=False)
         matched_products = replaced_products = skipped_products = created_rows = 0
         unmatched_products: list[str] = []
-        ambiguous_categories: list[str] = []
         ambiguous_products: list[str] = []
+        category_warnings: list[str] = []
         model_code_warnings: list[str] = []
         prepared_rows: list[PreparedProductFaq] = []
         imported_product_ids: set[int] = set()
         matched_product_keys: dict[int, ProductSheetKey] = {}
 
         for product_key in sorted(faq_rows_by_product.keys(), key=lambda item: (item.category_name.lower(), item.product_name.lower())):
-            category_matches = categories_by_name.get(product_key.category_name, [])
-            if len(category_matches) == 0:
-                skipped_products += 1
-                unmatched_products.append(f"{product_key.category_name} / {product_key.product_name}: category not found")
-                continue
-            if len(category_matches) > 1:
-                skipped_products += 1
-                ambiguous_categories.append(f"{product_key.category_name} / {product_key.product_name}: duplicate category name")
-                continue
-
-            category = category_matches[0]
             faq_rows = faq_rows_by_product[product_key]
             source_product_url = next((row.source_product_url for row in faq_rows if row.source_product_url), "")
             product_matches = products_by_source_url.get(source_product_url, []) if source_product_url else []
+            if len(product_matches) > 1:
+                skipped_products += 1
+                ambiguous_products.append(
+                    f"{product_key.category_name} / {product_key.product_name}: "
+                    f"Source Product URL {source_product_url!r} matched multiple products"
+                )
+                continue
             if not product_matches:
-                product_matches = products_by_key.get((category.id, product_key.product_name), [])
+                product_matches = products_by_name.get(product_key.product_name, [])
+                if len(product_matches) > 1:
+                    narrowed_matches = [
+                        product
+                        for product in product_matches
+                        if product.category.name == product_key.category_name
+                    ]
+                    if narrowed_matches:
+                        product_matches = narrowed_matches
 
             if len(product_matches) == 0:
                 skipped_products += 1
@@ -155,7 +168,7 @@ class Command(BaseCommand):
                 continue
             if len(product_matches) > 1:
                 skipped_products += 1
-                ambiguous_products.append(f"{product_key.category.name} / {product_key.product_name}: duplicate product match")
+                ambiguous_products.append(f"{product_key.category_name} / {product_key.product_name}: duplicate product match")
                 continue
 
             product = product_matches[0]
@@ -168,6 +181,12 @@ class Command(BaseCommand):
                 )
             matched_product_keys[product.id] = product_key
             matched_products += 1
+
+            if product.category.name != product_key.category_name:
+                category_warnings.append(
+                    f"{product_key.category_name} / {product_key.product_name}: "
+                    f"Excel category={product_key.category_name!r}, DB category={product.category.name!r}"
+                )
 
             workbook_model_code = next((row.model_code for row in faq_rows if row.model_code), "")
             if workbook_model_code and workbook_model_code != (product.model_code or ""):
@@ -229,14 +248,14 @@ class Command(BaseCommand):
             for item in unmatched_products[:100]:
                 self.stdout.write(f"  - {item}")
 
-        if ambiguous_categories:
-            self.stdout.write(self.style.WARNING("\nAmbiguous categories"))
-            for item in ambiguous_categories[:100]:
-                self.stdout.write(f"  - {item}")
-
         if ambiguous_products:
             self.stdout.write(self.style.WARNING("\nAmbiguous products"))
             for item in ambiguous_products[:100]:
+                self.stdout.write(f"  - {item}")
+
+        if category_warnings:
+            self.stdout.write(self.style.WARNING("\nCategory warnings"))
+            for item in category_warnings[:100]:
                 self.stdout.write(f"  - {item}")
 
         if model_code_warnings:
