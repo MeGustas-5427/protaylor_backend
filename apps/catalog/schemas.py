@@ -22,6 +22,7 @@ class CategoryProductListQuerySchema(Schema):
     page: int = 1
     page_size: int = 12
     order_by: str | None = None
+    subcategory_slug: str | None = None
 
 
 class CatalogPaginationSchema(Schema):
@@ -51,6 +52,25 @@ class ProductCardMetricSchema(Schema):
     value: str
 
 
+class SubcategoryTabSchema(Schema):
+    """父分类 PLP 顶部的子分类切换项。"""
+
+    slug: str
+    name: str
+    product_count: int
+
+
+class CategoryOperationalItemSchema(Schema):
+    """分类列表页 Operational Fit / Buyer Review Focus 结构化条目。"""
+
+    id: int
+    section_code: str
+    title: str
+    body: str
+    icon: str
+    sort_order: int
+
+
 class ProductListingItemSchema(Schema):
     """
     分类列表页可直接渲染的产品卡片摘要。
@@ -65,6 +85,8 @@ class ProductListingItemSchema(Schema):
     url_path: str
     model_code: str
     summary: str
+    subcategory_slug: str
+    subcategory_name: str
     card_image_url: str
     card_image_alt: str
     series_label: str | None = None
@@ -91,6 +113,12 @@ class ProductCategoryListingResponseSchema(Schema):
     seo_title: str
     meta_description: str
     summary: str
+    operational_fit_title: str
+    operational_fit_items: list[CategoryOperationalItemSchema]
+    buyer_review_focus_title: str
+    buyer_review_focus_items: list[CategoryOperationalItemSchema]
+    active_subcategory_slug: str | None = None
+    subcategory_tabs: list[SubcategoryTabSchema]
     pagination: CatalogPaginationSchema
     items: list[ProductListingItemSchema]
 
@@ -107,6 +135,19 @@ class CategoryPathSchema(Schema):
 
     slug: str
     url_path: str
+
+
+class CategoryOverviewCardSchema(Schema):
+    """`/products` 顶级分类入口卡片契约。"""
+
+    id: int
+    name: str
+    slug: str
+    url_path: str
+    summary: str
+    lead_text: str
+    product_count: int
+    has_children: bool
 
 
 class ProductCategoryDetailSchema(Schema):

@@ -5,6 +5,7 @@ from typing import Any
 from ninja import Query, Router
 
 from apps.catalog.schemas import (
+    CategoryOverviewCardSchema,
     CategoryPathSchema,
     CategoryProductListQuerySchema,
     ProductCategoryDetailSchema,
@@ -16,6 +17,7 @@ from apps.catalog.services import (
     get_category_detail,
     get_category_product_listing,
     get_product_detail,
+    list_category_overview_cards,
     list_category_paths,
     list_product_paths,
 )
@@ -29,6 +31,13 @@ def get_category_paths(request: Any) -> list[CategoryPathSchema]:
     # payload 故意保持极小，避免构建期为了路由发现去拉整份分类页内容。
     del request
     return list_category_paths()
+
+
+@router.get("/categories", response=list[CategoryOverviewCardSchema])
+def get_categories(request: Any) -> list[CategoryOverviewCardSchema]:
+    # `/products` 只消费顶级公开分类卡片，不需要更重的 guide/PLP payload。
+    del request
+    return list_category_overview_cards()
 
 
 @router.get("/categories/{slug}", response=ProductCategoryDetailSchema)
@@ -58,6 +67,7 @@ def get_category_products(
         page=query.page,
         page_size=query.page_size,
         order_by=query.order_by,
+        subcategory_slug=query.subcategory_slug,
     )
 
 

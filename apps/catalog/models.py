@@ -6,7 +6,7 @@ from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from common.models import OrderedModel, PublishableModel, SeoFieldsMixin
+from common.models import ActivatableModel, OrderedModel, PublishableModel, SeoFieldsMixin, TimeStampedModel
 from common.types import ChoicesMixin
 
 
@@ -134,6 +134,26 @@ class ProductRelationType(ChoicesMixin, IntEnum):
         }
 
 
+class ProductCategoryOperationalSection(ChoicesMixin, IntEnum):
+    OPERATIONAL_FIT = 1
+    BUYER_REVIEW_FOCUS = 2
+
+    @classmethod
+    def choices(cls):
+        names = {
+            cls.OPERATIONAL_FIT: "Operational Fit",
+            cls.BUYER_REVIEW_FOCUS: "Buyer Review Focus",
+        }
+        return [(member.value, names[member]) for member in cls]
+
+    @classmethod
+    def codes(cls):
+        return {
+            cls.OPERATIONAL_FIT.value: "operational_fit",
+            cls.BUYER_REVIEW_FOCUS.value: "buyer_review_focus",
+        }
+
+
 class ProductCategory(SeoFieldsMixin):
     name = models.CharField(_("分类名称"), max_length=255)
     parent = models.ForeignKey(
@@ -149,6 +169,18 @@ class ProductCategory(SeoFieldsMixin):
     summary = models.TextField(_("摘要"), blank=True)
     buyer_fit = models.TextField(_("适合谁"), blank=True)
     selection_guide = models.TextField(_("选型建议"), blank=True)
+    operational_fit_title = models.CharField(
+        _("Operational Fit 标题"),
+        max_length=120,
+        blank=True,
+        help_text="用于分类列表页左侧 Operational Fit 模块主标题；为空时前端可回退默认文案。",
+    )
+    buyer_review_focus_title = models.CharField(
+        _("Buyer Review Focus 标题"),
+        max_length=120,
+        blank=True,
+        help_text="用于分类列表页右侧 Buyer Review Focus 模块标题；为空时前端可回退默认文案。",
+    )
     is_core_category = models.BooleanField(_("是否核心分类"), default=False, db_index=True)
 
     class Meta:
@@ -163,6 +195,64 @@ class ProductCategory(SeoFieldsMixin):
 
     def __str__(self) -> str:
         return self.name
+
+
+class ProductCategoryOperationalItem(TimeStampedModel, ActivatableModel, OrderedModel):
+    Section = ProductCategoryOperationalSection
+
+    category = models.ForeignKey(
+        ProductCategory,
+        verbose_name=_("所属分类"),
+        on_delete=models.CASCADE,
+        related_name="operational_items",
+        help_text="分类列表页 Operational Fit / Buyer Review Focus 使用的结构化条目。",
+    )
+    section = models.PositiveSmallIntegerField(
+        _("所属分组"),
+        choices=ProductCategoryOperationalSection.choices,
+        db_index=True,
+        help_text="条目属于 Operational Fit 左列，还是 Buyer Review Focus 右列。",
+    )
+    title = models.CharField(
+        _("标题"),
+        max_length=32,
+        help_text="用于单行标题展示；建议控制在当前 PLP 一行可承载的英文长度内。",
+    )
+    body = models.CharField(
+        _("正文"),
+        max_length=120,
+        help_text="用于两行正文展示；建议 1-2 句，并控制在当前 PLP 两行可承载的英文长度内。",
+    )
+    icon = models.CharField(
+        _("图标"),
+        max_length=40,
+        blank=True,
+        help_text="Material Icon slug，例如 storefront、bolt、fact_check。",
+    )
+
+    class Meta(OrderedModel.Meta):
+        db_table = "product_category_operational_item"
+        verbose_name = "分类 Operational Fit 条目"
+        verbose_name_plural = "分类 Operational Fit 条目"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("category", "section", "sort_order"),
+                name="uniq_cat_oper_item_sort",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=("category", "section", "is_active", "sort_order"),
+                name="idx_cat_oper_item_q",
+            )
+        ]
+
+    @property
+    def section_code(self) -> str:
+        return ProductCategoryOperationalSection.code_of(self.section)
+
+    def __str__(self) -> str:
+        return f"{self.category.name}: {self.title}"
 
 
 class Product(SeoFieldsMixin):

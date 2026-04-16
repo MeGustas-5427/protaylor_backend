@@ -3,12 +3,13 @@ from __future__ import annotations
 from typing import Iterable
 
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import OuterRef, Prefetch, Subquery
+from django.db.models import Count, OuterRef, Prefetch, Q, Subquery
 from ninja.errors import HttpError
 
 from apps.catalog.models import (
     Product,
     ProductCategory,
+    ProductCategoryOperationalItem,
     ProductDownload,
     ProductFeature,
     ProductMedia,
@@ -21,6 +22,8 @@ from apps.catalog.models import (
 from apps.content.models import FAQItem, ResourceArticle
 from apps.core.models import PageSEO
 from apps.catalog.schemas import (
+    CategoryOperationalItemSchema,
+    CategoryOverviewCardSchema,
     CategoryPathSchema,
     CatalogPaginationSchema,
     ProductCardMetricSchema,
@@ -34,6 +37,7 @@ from apps.catalog.schemas import (
     ProductPathSchema,
     RelatedProductCardSchema,
     RelatedResourceCardSchema,
+    SubcategoryTabSchema,
     ProductSpecGroupSchema,
     ProductSpecRowSchema,
     ProductUseCaseSchema,
@@ -63,6 +67,8 @@ LISTING_METRIC_PRIORITY = (
 LISTING_METRIC_LIMIT = 3
 RELATED_RESOURCE_EYEBROW = "RESOURCE CENTER"
 PRODUCT_DETAIL_FAQ_LIMIT = 3
+DEFAULT_OPERATIONAL_FIT_TITLE = "Operational Fit"
+DEFAULT_BUYER_REVIEW_FOCUS_TITLE = "Buyer Review Focus"
 
 
 class CategoryProductListingContract(NinjaPaginationMixin):
@@ -102,6 +108,55 @@ def _serialize_pagination(window: PaginationWindow) -> CatalogPaginationSchema:
         end_item=window.end_item,
         has_previous=window.has_previous,
         has_next=window.has_next,
+    )
+
+
+def _serialize_category_operational_item(item: ProductCategoryOperationalItem) -> CategoryOperationalItemSchema:
+    return CategoryOperationalItemSchema(
+        id=item.id,
+        section_code=item.section_code,
+        title=item.title,
+        body=item.body,
+        icon=item.icon or "",
+        sort_order=item.sort_order,
+    )
+
+
+def _split_category_operational_items(
+    items: Iterable[ProductCategoryOperationalItem],
+) -> tuple[list[CategoryOperationalItemSchema], list[CategoryOperationalItemSchema]]:
+    operational_fit_items: list[CategoryOperationalItemSchema] = []
+    buyer_review_focus_items: list[CategoryOperationalItemSchema] = []
+
+    for item in items:
+        serialized = _serialize_category_operational_item(item)
+        if item.section == ProductCategoryOperationalItem.Section.OPERATIONAL_FIT:
+            operational_fit_items.append(serialized)
+        elif item.section == ProductCategoryOperationalItem.Section.BUYER_REVIEW_FOCUS:
+            buyer_review_focus_items.append(serialized)
+
+    return operational_fit_items, buyer_review_focus_items
+
+
+def _load_category_operational_content(
+    category: ProductCategory,
+) -> tuple[
+    str,
+    list[CategoryOperationalItemSchema],
+    str,
+    list[CategoryOperationalItemSchema],
+]:
+    items = list(
+        category.operational_items.filter(is_active=True)
+        .only("id", "category_id", "section", "title", "body", "icon", "sort_order", "is_active")
+        .order_by("section", "sort_order", "id")
+    )
+    operational_fit_items, buyer_review_focus_items = _split_category_operational_items(items)
+    return (
+        category.operational_fit_title or DEFAULT_OPERATIONAL_FIT_TITLE,
+        operational_fit_items,
+        category.buyer_review_focus_title or DEFAULT_BUYER_REVIEW_FOCUS_TITLE,
+        buyer_review_focus_items,
     )
 
 
@@ -299,6 +354,8 @@ def _serialize_listing_item(product: Product) -> ProductListingItemSchema:
         url_path=product.url_path,
         model_code=product.model_code or "",
         summary=product.summary or product.lead_text or "",
+        subcategory_slug=product.category.slug,
+        subcategory_name=product.category.name,
         card_image_url=image_url,
         card_image_alt=image_alt,
         series_label=product.series_label,
@@ -308,22 +365,94 @@ def _serialize_listing_item(product: Product) -> ProductListingItemSchema:
     )
 
 
-def get_category_detail(slug: str) -> ProductCategoryDetailSchema:
+def _get_published_category_or_404(slug: str) -> ProductCategory:
     category = (
         ProductCategory.objects.filter(
             slug=slug,
             status=ProductCategory.Status.PUBLISHED,
         )
-        .prefetch_related(
-            Prefetch(
-                "products",
-                queryset=Product.objects.filter(status=Product.Status.PUBLISHED, is_canonical=True).order_by("name"),
-            )
+        .select_related("parent")
+        .only(
+            "id",
+            "name",
+            "slug",
+            "url_path",
+            "h1",
+            "lead_text",
+            "seo_title",
+            "meta_description",
+            "summary",
+            "buyer_fit",
+            "selection_guide",
+            "operational_fit_title",
+            "buyer_review_focus_title",
+            "is_core_category",
+            "parent_id",
         )
         .first()
     )
     if not category:
         raise HttpError(404, "Product category not found.")
+    return category
+
+
+def _get_published_child_categories(parent: ProductCategory) -> list[ProductCategory]:
+    return list(
+        ProductCategory.objects.filter(
+            parent=parent,
+            status=ProductCategory.Status.PUBLISHED,
+        )
+        .annotate(
+            product_count=Count(
+                "products",
+                filter=Q(
+                    products__status=Product.Status.PUBLISHED,
+                    products__is_canonical=True,
+                ),
+                distinct=True,
+            )
+        )
+        .only(
+            "id",
+            "name",
+            "slug",
+            "url_path",
+            "parent_id",
+            "operational_fit_title",
+            "buyer_review_focus_title",
+        )
+        .order_by("name")
+    )
+
+
+def _serialize_subcategory_tabs(categories: list[ProductCategory]) -> list[SubcategoryTabSchema]:
+    return [
+        SubcategoryTabSchema(
+            slug=category.slug,
+            name=category.name,
+            product_count=getattr(category, "product_count", 0),
+        )
+        for category in categories
+    ]
+
+
+def get_category_detail(slug: str) -> ProductCategoryDetailSchema:
+    category = _get_published_category_or_404(slug)
+    child_categories = _get_published_child_categories(category) if category.parent_id is None else []
+
+    product_filter = Q(category=category)
+    if child_categories:
+        product_filter = Q(category=category) | Q(category__parent=category)
+
+    products = (
+        Product.objects.filter(
+            product_filter,
+            status=Product.Status.PUBLISHED,
+            is_canonical=True,
+        )
+        .select_related("category")
+        .order_by("name")
+    )
 
     return ProductCategoryDetailSchema(
         id=category.id,
@@ -338,7 +467,7 @@ def get_category_detail(slug: str) -> ProductCategoryDetailSchema:
         buyer_fit=category.buyer_fit or "",
         selection_guide=category.selection_guide or "",
         is_core_category=category.is_core_category,
-        products=[serialize_product_summary(product) for product in category.products.all()],
+        products=[serialize_product_summary(product) for product in products],
     )
 
 
@@ -348,6 +477,7 @@ def get_category_product_listing(
     page: int = 1,
     page_size: int = 12,
     order_by: str | None = None,
+    subcategory_slug: str | None = None,
 ) -> ProductCategoryListingResponseSchema:
     """
     构建已发布分类的 PLP 响应契约。
@@ -357,33 +487,46 @@ def get_category_product_listing(
     混进列表接口。
     """
 
-    category = (
-        ProductCategory.objects.filter(
-            slug=slug,
-            status=ProductCategory.Status.PUBLISHED,
-        )
-        .only(
-            "id",
-            "name",
-            "slug",
-            "url_path",
-            "h1",
-            "lead_text",
-            "seo_title",
-            "meta_description",
-            "summary",
-        )
-        .first()
-    )
-    if not category:
-        raise HttpError(404, "Product category not found.")
+    category = _get_published_category_or_404(slug)
+    child_categories = _get_published_child_categories(category) if category.parent_id is None else []
+    active_subcategory_slug: str | None = None
+    subcategory_tabs: list[SubcategoryTabSchema] = []
+    operational_content_category: ProductCategory | None = None
+    product_filter = Q(category=category)
+
+    if child_categories:
+        child_slug_map = {child.slug: child for child in child_categories}
+
+        if len(child_categories) == 1:
+            only_child = child_categories[0]
+            if subcategory_slug and subcategory_slug != only_child.slug:
+                raise HttpError(400, "Invalid subcategory for this category.")
+
+            # 单子分类父类对前端表现为独立公开分类，因此不返回 tabs；
+            # 但后端仍聚合唯一子分类产品，避免 taxonomy 归一后主列表变空。
+            active_subcategory_slug = only_child.slug
+            product_filter = Q(category=category) | Q(category=only_child)
+        else:
+            if subcategory_slug:
+                selected_child = child_slug_map.get(subcategory_slug)
+                if not selected_child:
+                    raise HttpError(400, "Invalid subcategory for this category.")
+                active_subcategory_slug = selected_child.slug
+                operational_content_category = selected_child
+                product_filter = Q(category=selected_child)
+            else:
+                product_filter = Q(category=category) | Q(category__parent=category)
+
+            subcategory_tabs = _serialize_subcategory_tabs(child_categories)
+    elif subcategory_slug:
+        raise HttpError(400, "Subcategory filter is not available for this category.")
 
     queryset = (
         Product.objects.filter(
-            category=category,
             status=Product.Status.PUBLISHED,
             is_canonical=True,
         )
+        .filter(product_filter)
         .select_related("category")
         .prefetch_related(
             Prefetch(
@@ -419,6 +562,28 @@ def get_category_product_listing(
         page_size=normalized_query.page_size,
     )
 
+    (
+        operational_fit_title,
+        operational_fit_items,
+        buyer_review_focus_title,
+        buyer_review_focus_items,
+    ) = _load_category_operational_content(category)
+
+    if operational_content_category is not None:
+        (
+            child_operational_fit_title,
+            child_operational_fit_items,
+            child_buyer_review_focus_title,
+            child_buyer_review_focus_items,
+        ) = _load_category_operational_content(operational_content_category)
+
+        if child_operational_fit_items:
+            operational_fit_title = child_operational_fit_title
+            operational_fit_items = child_operational_fit_items
+        if child_buyer_review_focus_items:
+            buyer_review_focus_title = child_buyer_review_focus_title
+            buyer_review_focus_items = child_buyer_review_focus_items
+
     return ProductCategoryListingResponseSchema(
         id=category.id,
         name=category.name,
@@ -429,6 +594,12 @@ def get_category_product_listing(
         seo_title=category.seo_title,
         meta_description=category.meta_description,
         summary=category.summary or "",
+        operational_fit_title=operational_fit_title,
+        operational_fit_items=operational_fit_items,
+        buyer_review_focus_title=buyer_review_focus_title,
+        buyer_review_focus_items=buyer_review_focus_items,
+        active_subcategory_slug=active_subcategory_slug,
+        subcategory_tabs=subcategory_tabs,
         pagination=_serialize_pagination(window),
         items=[_serialize_listing_item(product) for product in page_obj.object_list],
     )
@@ -471,12 +642,64 @@ def list_category_paths() -> list[CategoryPathSchema]:
     """
 
     queryset = (
-        ProductCategory.objects.filter(status=ProductCategory.Status.PUBLISHED)
+        ProductCategory.objects.filter(
+            status=ProductCategory.Status.PUBLISHED,
+            parent__isnull=True,
+        )
         .only("slug", "url_path")
-        .order_by("slug")
+        .order_by("name")
     )
 
     return [CategoryPathSchema(slug=category.slug, url_path=category.url_path) for category in queryset]
+
+
+def list_category_overview_cards() -> list[CategoryOverviewCardSchema]:
+    queryset = (
+        ProductCategory.objects.filter(
+            status=ProductCategory.Status.PUBLISHED,
+            parent__isnull=True,
+        )
+        .annotate(
+            direct_product_count=Count(
+                "products",
+                filter=Q(
+                    products__status=Product.Status.PUBLISHED,
+                    products__is_canonical=True,
+                ),
+                distinct=True,
+            ),
+            child_product_count=Count(
+                "children__products",
+                filter=Q(
+                    children__status=ProductCategory.Status.PUBLISHED,
+                    children__products__status=Product.Status.PUBLISHED,
+                    children__products__is_canonical=True,
+                ),
+                distinct=True,
+            ),
+            published_child_count=Count(
+                "children",
+                filter=Q(children__status=ProductCategory.Status.PUBLISHED),
+                distinct=True,
+            ),
+        )
+        .only("id", "name", "slug", "url_path", "summary", "lead_text")
+        .order_by("name")
+    )
+
+    return [
+        CategoryOverviewCardSchema(
+            id=category.id,
+            name=category.name,
+            slug=category.slug,
+            url_path=category.url_path,
+            summary=category.summary or "",
+            lead_text=category.lead_text or "",
+            product_count=category.direct_product_count + category.child_product_count,
+            has_children=category.published_child_count > 0,
+        )
+        for category in queryset
+    ]
 
 
 def get_product_detail(category_slug: str, product_slug: str) -> ProductDetailSchema:

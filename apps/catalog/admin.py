@@ -7,6 +7,7 @@ from apps.content.models import FAQItem
 from .models import (
     Product,
     ProductCategory,
+    ProductCategoryOperationalItem,
     ProductDownload,
     ProductFeature,
     ProductMedia,
@@ -117,6 +118,13 @@ class ProductRelationInline(admin.TabularInline):
     show_change_link = True
 
 
+class ProductCategoryOperationalItemInline(admin.TabularInline):
+    model = ProductCategoryOperationalItem
+    extra = 0
+    fields = ("section", "title", "body", "icon", "sort_order", "is_active")
+    show_change_link = True
+
+
 @admin.register(ProductCategory)
 class ProductCategoryAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
     list_display = ("name", "slug", "is_core_category", "status", "index_mode")
@@ -126,6 +134,7 @@ class ProductCategoryAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
     ordering = ("name",)
     list_select_related = ("parent",)
     autocomplete_fields = ("parent",)
+    inlines = (ProductCategoryOperationalItemInline,)
     fieldsets = (
         (
             "Category Identity",
@@ -148,6 +157,8 @@ class ProductCategoryAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
                     "summary",
                     "buyer_fit",
                     "selection_guide",
+                    "operational_fit_title",
+                    "buyer_review_focus_title",
                 )
             },
         ),
@@ -168,6 +179,15 @@ class ProductCategoryAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
         ),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )
+
+
+@admin.register(ProductCategoryOperationalItem)
+class ProductCategoryOperationalItemAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
+    list_display = ("title", "category", "section_code", "sort_order", "is_active")
+    list_filter = ("section", "is_active")
+    search_fields = ("title", "body", "category__name")
+    list_select_related = ("category",)
+    autocomplete_fields = ("category",)
 
 
 @admin.register(Product)
