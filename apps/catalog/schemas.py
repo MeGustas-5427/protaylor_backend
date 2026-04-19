@@ -71,6 +71,16 @@ class CategoryOperationalItemSchema(Schema):
     sort_order: int
 
 
+class CategoryFaqItemSchema(Schema):
+    """分类列表页 Sourcing FAQ 结构化条目。"""
+
+    id: int
+    placement_code: str
+    question: str
+    answer: str
+    sort_order: int
+
+
 class ProductListingItemSchema(Schema):
     """
     分类列表页可直接渲染的产品卡片摘要。
@@ -117,6 +127,8 @@ class ProductCategoryListingResponseSchema(Schema):
     operational_fit_items: list[CategoryOperationalItemSchema]
     buyer_review_focus_title: str
     buyer_review_focus_items: list[CategoryOperationalItemSchema]
+    sourcing_faq_title: str
+    sourcing_faq_items: list[CategoryFaqItemSchema]
     active_subcategory_slug: str | None = None
     subcategory_tabs: list[SubcategoryTabSchema]
     pagination: CatalogPaginationSchema

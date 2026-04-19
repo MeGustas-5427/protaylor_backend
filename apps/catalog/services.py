@@ -9,6 +9,7 @@ from ninja.errors import HttpError
 from apps.catalog.models import (
     Product,
     ProductCategory,
+    ProductCategoryFaqItem,
     ProductCategoryOperationalItem,
     ProductDownload,
     ProductFeature,
@@ -22,6 +23,7 @@ from apps.catalog.models import (
 from apps.content.models import FAQItem, ResourceArticle
 from apps.core.models import PageSEO
 from apps.catalog.schemas import (
+    CategoryFaqItemSchema,
     CategoryOperationalItemSchema,
     CategoryOverviewCardSchema,
     CategoryPathSchema,
@@ -69,6 +71,7 @@ RELATED_RESOURCE_EYEBROW = "RESOURCE CENTER"
 PRODUCT_DETAIL_FAQ_LIMIT = 3
 DEFAULT_OPERATIONAL_FIT_TITLE = "Operational Fit"
 DEFAULT_BUYER_REVIEW_FOCUS_TITLE = "Buyer Review Focus"
+DEFAULT_SOURCING_FAQ_TITLE = "Sourcing FAQ"
 
 
 class CategoryProductListingContract(NinjaPaginationMixin):
@@ -122,6 +125,16 @@ def _serialize_category_operational_item(item: ProductCategoryOperationalItem) -
     )
 
 
+def _serialize_category_faq_item(item: ProductCategoryFaqItem) -> CategoryFaqItemSchema:
+    return CategoryFaqItemSchema(
+        id=item.id,
+        placement_code=item.placement_code,
+        question=item.question,
+        answer=item.answer,
+        sort_order=item.sort_order,
+    )
+
+
 def _split_category_operational_items(
     items: Iterable[ProductCategoryOperationalItem],
 ) -> tuple[list[CategoryOperationalItemSchema], list[CategoryOperationalItemSchema]]:
@@ -136,6 +149,23 @@ def _split_category_operational_items(
             buyer_review_focus_items.append(serialized)
 
     return operational_fit_items, buyer_review_focus_items
+
+
+def _load_category_sourcing_faq_content(
+    category: ProductCategory,
+) -> tuple[str, list[CategoryFaqItemSchema]]:
+    items = list(
+        category.sourcing_faq_items.filter(
+            is_active=True,
+            placement=ProductCategoryFaqItem.Placement.PLP_SOURCING,
+        )
+        .only("id", "category_id", "placement", "question", "answer", "sort_order", "is_active")
+        .order_by("sort_order", "id")
+    )
+    return (
+        category.sourcing_faq_title or DEFAULT_SOURCING_FAQ_TITLE,
+        [_serialize_category_faq_item(item) for item in items],
+    )
 
 
 def _load_category_operational_content(
@@ -386,6 +416,7 @@ def _get_published_category_or_404(slug: str) -> ProductCategory:
             "selection_guide",
             "operational_fit_title",
             "buyer_review_focus_title",
+            "sourcing_faq_title",
             "is_core_category",
             "parent_id",
         )
@@ -420,6 +451,7 @@ def _get_published_child_categories(parent: ProductCategory) -> list[ProductCate
             "parent_id",
             "operational_fit_title",
             "buyer_review_focus_title",
+            "sourcing_faq_title",
         )
         .order_by("name")
     )
@@ -503,7 +535,7 @@ def get_category_product_listing(
                 raise HttpError(400, "Invalid subcategory for this category.")
 
             # 单子分类父类对前端表现为独立公开分类，因此不返回 tabs；
-            # 但后端仍聚合唯一子分类产品，避免 taxonomy 归一后主列表变空。
+            # 但当前列表页链路不会切到 child 内容区，只聚合唯一子分类产品，避免 taxonomy 归一后主列表变空。
             active_subcategory_slug = only_child.slug
             product_filter = Q(category=category) | Q(category=only_child)
         else:
@@ -568,6 +600,7 @@ def get_category_product_listing(
         buyer_review_focus_title,
         buyer_review_focus_items,
     ) = _load_category_operational_content(category)
+    sourcing_faq_title, sourcing_faq_items = _load_category_sourcing_faq_content(category)
 
     if operational_content_category is not None:
         (
@@ -576,6 +609,9 @@ def get_category_product_listing(
             child_buyer_review_focus_title,
             child_buyer_review_focus_items,
         ) = _load_category_operational_content(operational_content_category)
+        child_sourcing_faq_title, child_sourcing_faq_items = _load_category_sourcing_faq_content(
+            operational_content_category
+        )
 
         if child_operational_fit_items:
             operational_fit_title = child_operational_fit_title
@@ -583,6 +619,9 @@ def get_category_product_listing(
         if child_buyer_review_focus_items:
             buyer_review_focus_title = child_buyer_review_focus_title
             buyer_review_focus_items = child_buyer_review_focus_items
+        if child_sourcing_faq_items:
+            sourcing_faq_title = child_sourcing_faq_title
+            sourcing_faq_items = child_sourcing_faq_items
 
     return ProductCategoryListingResponseSchema(
         id=category.id,
@@ -598,6 +637,8 @@ def get_category_product_listing(
         operational_fit_items=operational_fit_items,
         buyer_review_focus_title=buyer_review_focus_title,
         buyer_review_focus_items=buyer_review_focus_items,
+        sourcing_faq_title=sourcing_faq_title,
+        sourcing_faq_items=sourcing_faq_items,
         active_subcategory_slug=active_subcategory_slug,
         subcategory_tabs=subcategory_tabs,
         pagination=_serialize_pagination(window),

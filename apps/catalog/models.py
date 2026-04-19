@@ -154,6 +154,26 @@ class ProductCategoryOperationalSection(ChoicesMixin, IntEnum):
         }
 
 
+class ProductCategoryFaqPlacement(ChoicesMixin, IntEnum):
+    PLP_SOURCING = 1
+    GUIDE_FAQ = 2
+
+    @classmethod
+    def choices(cls):
+        names = {
+            cls.PLP_SOURCING: "PLP Sourcing FAQ",
+            cls.GUIDE_FAQ: "Guide FAQ",
+        }
+        return [(member.value, names[member]) for member in cls]
+
+    @classmethod
+    def codes(cls):
+        return {
+            cls.PLP_SOURCING.value: "plp_sourcing",
+            cls.GUIDE_FAQ.value: "guide_faq",
+        }
+
+
 class ProductCategory(SeoFieldsMixin):
     name = models.CharField(_("分类名称"), max_length=255)
     parent = models.ForeignKey(
@@ -180,6 +200,12 @@ class ProductCategory(SeoFieldsMixin):
         max_length=120,
         blank=True,
         help_text="用于分类列表页右侧 Buyer Review Focus 模块标题；为空时前端可回退默认文案。",
+    )
+    sourcing_faq_title = models.CharField(
+        _("Sourcing FAQ 标题"),
+        max_length=120,
+        blank=True,
+        help_text="用于分类列表页 Sourcing FAQ 模块标题；为空时前端可回退默认文案。",
     )
     is_core_category = models.BooleanField(_("是否核心分类"), default=False, db_index=True)
 
@@ -253,6 +279,57 @@ class ProductCategoryOperationalItem(TimeStampedModel, ActivatableModel, Ordered
 
     def __str__(self) -> str:
         return f"{self.category.name}: {self.title}"
+
+
+class ProductCategoryFaqItem(TimeStampedModel, ActivatableModel, OrderedModel):
+    Placement = ProductCategoryFaqPlacement
+
+    category = models.ForeignKey(
+        ProductCategory,
+        verbose_name=_("所属分类"),
+        on_delete=models.CASCADE,
+        related_name="sourcing_faq_items",
+        help_text="分类页 FAQ 条目。",
+    )
+    placement = models.PositiveSmallIntegerField(
+        _("展示位置"),
+        choices=ProductCategoryFaqPlacement.choices,
+        db_index=True,
+        help_text="FAQ 属于 PLP sourcing FAQ 还是 guide FAQ。",
+    )
+    question = models.CharField(
+        _("问题"),
+        max_length=180,
+        help_text="建议 1 句，直接对应买家会问的问题。",
+    )
+    answer = models.TextField(
+        _("答案"),
+        help_text="建议 1-3 句，回答要具体、可被搜索和 AI 抽取。",
+    )
+
+    class Meta(OrderedModel.Meta):
+        db_table = "product_category_faq_item"
+        verbose_name = "分类 FAQ 条目"
+        verbose_name_plural = "分类 FAQ 条目"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("category", "placement", "sort_order"),
+                name="uniq_cat_faq_item_sort",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=("category", "placement", "is_active", "sort_order"),
+                name="idx_cat_faq_item_q",
+            )
+        ]
+
+    @property
+    def placement_code(self) -> str:
+        return ProductCategoryFaqPlacement.code_of(self.placement)
+
+    def __str__(self) -> str:
+        return f"{self.category.name}: {self.question}"
 
 
 class Product(SeoFieldsMixin):

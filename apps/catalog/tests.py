@@ -13,6 +13,7 @@ from openpyxl import Workbook
 from apps.catalog.models import (
     Product,
     ProductCategory,
+    ProductCategoryFaqItem,
     ProductCategoryOperationalItem,
     ProductMedia,
     ProductRelation,
@@ -80,6 +81,7 @@ class CatalogApiTests(TestCase):
             parent: ProductCategory | None = None,
             operational_fit_title: str = "",
             buyer_review_focus_title: str = "",
+            sourcing_faq_title: str = "",
         ) -> ProductCategory:
             return ProductCategory.objects.create(
                 name=name,
@@ -92,6 +94,7 @@ class CatalogApiTests(TestCase):
                 selection_guide=f"{name} selection guide",
                 operational_fit_title=operational_fit_title,
                 buyer_review_focus_title=buyer_review_focus_title,
+                sourcing_faq_title=sourcing_faq_title,
                 seo_title=f"{name} | PRO-TAYLOR",
                 meta_description=f"{name} meta description",
                 primary_query=name.lower(),
@@ -152,6 +155,7 @@ class CatalogApiTests(TestCase):
             url_path="/products/ice-cream-machine/",
             operational_fit_title="Operational Fit",
             buyer_review_focus_title="Buyer Review Focus",
+            sourcing_faq_title="Sourcing FAQ",
         )
         cls.gelato_child = create_category(
             name="Gelato Batch Freezer",
@@ -160,6 +164,7 @@ class CatalogApiTests(TestCase):
             parent=cls.parent_category,
             operational_fit_title="Gelato Operational Fit",
             buyer_review_focus_title="Gelato Buyer Review Focus",
+            sourcing_faq_title="Gelato Sourcing FAQ",
         )
         cls.roll_child = create_category(
             name="Roll Ice Cream Machine",
@@ -253,23 +258,129 @@ class CatalogApiTests(TestCase):
                 ),
             ]
         )
+        ProductCategoryFaqItem.objects.bulk_create(
+            [
+                ProductCategoryFaqItem(
+                    category=cls.parent_category,
+                    placement=ProductCategoryFaqItem.Placement.PLP_SOURCING,
+                    question="How should buyers compare ice cream machine models?",
+                    answer="Start with service format, output target, utilities, and working space before asking suppliers to confirm final fit.",
+                    sort_order=10,
+                ),
+                ProductCategoryFaqItem(
+                    category=cls.parent_category,
+                    placement=ProductCategoryFaqItem.Placement.PLP_SOURCING,
+                    question="What details should be prepared before requesting a quote?",
+                    answer="Prepare target models, intended use case, preferred voltage, destination market, and any OEM or certification needs.",
+                    sort_order=20,
+                ),
+                ProductCategoryFaqItem(
+                    category=cls.gelato_child,
+                    placement=ProductCategoryFaqItem.Placement.PLP_SOURCING,
+                    question="What should buyers check before choosing a gelato batch freezer?",
+                    answer="Review batch size, extraction timing, blast-freeze handoff, and operator rhythm before committing to a freezer platform.",
+                    sort_order=10,
+                ),
+                ProductCategoryFaqItem(
+                    category=cls.gelato_child,
+                    placement=ProductCategoryFaqItem.Placement.PLP_SOURCING,
+                    question="Why does kitchen workflow matter for gelato batch freezers?",
+                    answer="Charging, rinsing, and pan-transfer space can limit throughput even when the freezer headline capacity looks sufficient.",
+                    sort_order=20,
+                ),
+            ]
+        )
 
         cls.single_child_parent = create_category(
             name="Home Use Slush Machine",
             slug="home-use-slush-machine",
             url_path="/products/home-use-slush-machine/",
+            operational_fit_title="Home Slush Operational Fit",
+            buyer_review_focus_title="Home Slush Buyer Review Focus",
+            sourcing_faq_title="Home Slush Sourcing FAQ",
         )
         cls.single_child = create_category(
             name="2L Slush Machine",
             slug="2l-slush-machine",
             url_path="/products/2l-slush-machine/",
             parent=cls.single_child_parent,
+            operational_fit_title="2L Slush Operational Fit",
+            buyer_review_focus_title="2L Slush Buyer Review Focus",
+            sourcing_faq_title="2L Slush Sourcing FAQ",
         )
         cls.single_child_product = create_listing_ready_product(
             category=cls.single_child,
             slug="2l-test-model",
             name="2L Test Model",
             url_path="/products/2l-slush-machine/2l-test-model/",
+        )
+        ProductCategoryOperationalItem.objects.bulk_create(
+            [
+                ProductCategoryOperationalItem(
+                    category=cls.single_child_parent,
+                    section=ProductCategoryOperationalItem.Section.OPERATIONAL_FIT,
+                    title="Parent Footprint Fit",
+                    body="Use the parent listing view to frame compact frozen drink options before deciding whether a narrower bowl size matters.",
+                    icon="storefront",
+                    sort_order=10,
+                ),
+                ProductCategoryOperationalItem(
+                    category=cls.single_child_parent,
+                    section=ProductCategoryOperationalItem.Section.BUYER_REVIEW_FOCUS,
+                    title="Parent Throughput Framing",
+                    body="Validate how much rush pressure the category must absorb before leaning on a compact slush machine answer.",
+                    icon="query_stats",
+                    sort_order=10,
+                ),
+                ProductCategoryOperationalItem(
+                    category=cls.single_child,
+                    section=ProductCategoryOperationalItem.Section.OPERATIONAL_FIT,
+                    title="Compact Counter Fit",
+                    body="Match true rush length, refill rhythm, and counter width before defaulting to a 2L tabletop machine.",
+                    icon="storefront",
+                    sort_order=10,
+                ),
+                ProductCategoryOperationalItem(
+                    category=cls.single_child,
+                    section=ProductCategoryOperationalItem.Section.BUYER_REVIEW_FOCUS,
+                    title="Cooling and Ventilation Limits",
+                    body="Check ambient heat, side clearance, and recovery expectations before treating a small bowl machine as all-day service equipment.",
+                    icon="bolt",
+                    sort_order=10,
+                ),
+            ]
+        )
+        ProductCategoryFaqItem.objects.bulk_create(
+            [
+                ProductCategoryFaqItem(
+                    category=cls.single_child_parent,
+                    placement=ProductCategoryFaqItem.Placement.PLP_SOURCING,
+                    question="How should buyers compare home use slush machine models?",
+                    answer="Start with drink type, service rhythm, counter footprint, and operating environment before narrowing to a specific compact bowl size.",
+                    sort_order=10,
+                ),
+                ProductCategoryFaqItem(
+                    category=cls.single_child_parent,
+                    placement=ProductCategoryFaqItem.Placement.PLP_SOURCING,
+                    question="What should buyers confirm before requesting a home use slush machine quote?",
+                    answer="Prepare peak servings, flavor plan, voltage, placement conditions, and refill expectations before asking for a compact slush recommendation.",
+                    sort_order=20,
+                ),
+                ProductCategoryFaqItem(
+                    category=cls.single_child,
+                    placement=ProductCategoryFaqItem.Placement.PLP_SOURCING,
+                    question="When is a 2L slush machine the right choice?",
+                    answer="Use a 2L tabletop slush machine when menu scope is narrow, service rhythm is moderate, and the counter footprint cannot support a larger frozen drink platform.",
+                    sort_order=10,
+                ),
+                ProductCategoryFaqItem(
+                    category=cls.single_child,
+                    placement=ProductCategoryFaqItem.Placement.PLP_SOURCING,
+                    question="What should buyers confirm before requesting a 2L slush machine quote?",
+                    answer="Confirm drink type, peak servings, flavor count, voltage, usable counter width, refill rhythm, and recipe sugar range before comparing models.",
+                    sort_order=20,
+                ),
+            ]
         )
 
         resource_image = MediaAsset.objects.create(
@@ -323,8 +434,10 @@ class CatalogApiTests(TestCase):
         self.assertIn("metrics", payload["items"][0])
         self.assertEqual(payload["operational_fit_title"], "Operational Fit")
         self.assertEqual(payload["buyer_review_focus_title"], "Buyer Review Focus")
+        self.assertEqual(payload["sourcing_faq_title"], "Sourcing FAQ")
         self.assertEqual(payload["operational_fit_items"], [])
         self.assertEqual(payload["buyer_review_focus_items"], [])
+        self.assertEqual(payload["sourcing_faq_items"], [])
 
     def test_category_products_endpoint_overflow_page_returns_last_page(self) -> None:
         # 对这个公开 B2B 分类目录来说，超界页码应该回最后一页，
@@ -418,6 +531,7 @@ class CatalogApiTests(TestCase):
         self.assertIn("subcategory_name", payload["items"][0])
         self.assertEqual(payload["operational_fit_title"], "Operational Fit")
         self.assertEqual(payload["buyer_review_focus_title"], "Buyer Review Focus")
+        self.assertEqual(payload["sourcing_faq_title"], "Sourcing FAQ")
         self.assertEqual(
             [item["title"] for item in payload["operational_fit_items"]],
             ["Application Matching", "Utility Planning"],
@@ -434,6 +548,13 @@ class CatalogApiTests(TestCase):
             [item["sort_order"] for item in payload["buyer_review_focus_items"]],
             [10, 20],
         )
+        self.assertEqual(
+            [item["question"] for item in payload["sourcing_faq_items"]],
+            [
+                "How should buyers compare ice cream machine models?",
+                "What details should be prepared before requesting a quote?",
+            ],
+        )
 
     def test_parent_category_products_endpoint_filters_by_subcategory(self) -> None:
         response = self.client.get(
@@ -448,6 +569,7 @@ class CatalogApiTests(TestCase):
         self.assertEqual(payload["items"][0]["subcategory_slug"], "gelato-batch-freezer")
         self.assertEqual(payload["operational_fit_title"], "Gelato Operational Fit")
         self.assertEqual(payload["buyer_review_focus_title"], "Gelato Buyer Review Focus")
+        self.assertEqual(payload["sourcing_faq_title"], "Gelato Sourcing FAQ")
         self.assertEqual(
             [item["title"] for item in payload["operational_fit_items"]],
             ["Batch Capacity Fit", "Kitchen Workflow"],
@@ -455,6 +577,13 @@ class CatalogApiTests(TestCase):
         self.assertEqual(
             [item["title"] for item in payload["buyer_review_focus_items"]],
             ["Freeze Curve Review", "Utilities by Batch"],
+        )
+        self.assertEqual(
+            [item["question"] for item in payload["sourcing_faq_items"]],
+            [
+                "What should buyers check before choosing a gelato batch freezer?",
+                "Why does kitchen workflow matter for gelato batch freezers?",
+            ],
         )
 
     def test_parent_category_products_endpoint_falls_back_to_parent_operational_content_when_child_has_none(self) -> None:
@@ -467,6 +596,7 @@ class CatalogApiTests(TestCase):
         self.assertEqual(payload["active_subcategory_slug"], "roll-ice-cream-machine")
         self.assertEqual(payload["operational_fit_title"], "Operational Fit")
         self.assertEqual(payload["buyer_review_focus_title"], "Buyer Review Focus")
+        self.assertEqual(payload["sourcing_faq_title"], "Sourcing FAQ")
         self.assertEqual(
             [item["title"] for item in payload["operational_fit_items"]],
             ["Application Matching", "Utility Planning"],
@@ -474,6 +604,13 @@ class CatalogApiTests(TestCase):
         self.assertEqual(
             [item["title"] for item in payload["buyer_review_focus_items"]],
             ["Capacity vs. Actual Demand", "Utilities and Footprint"],
+        )
+        self.assertEqual(
+            [item["question"] for item in payload["sourcing_faq_items"]],
+            [
+                "How should buyers compare ice cream machine models?",
+                "What details should be prepared before requesting a quote?",
+            ],
         )
 
     def test_single_child_parent_products_endpoint_hides_tabs_but_aggregates_child(self) -> None:
@@ -486,6 +623,24 @@ class CatalogApiTests(TestCase):
         self.assertEqual(payload["subcategory_tabs"], [])
         self.assertEqual(payload["pagination"]["total_items"], 1)
         self.assertEqual(payload["items"][0]["slug"], self.single_child_product.slug)
+        self.assertEqual(payload["operational_fit_title"], "Home Slush Operational Fit")
+        self.assertEqual(payload["buyer_review_focus_title"], "Home Slush Buyer Review Focus")
+        self.assertEqual(payload["sourcing_faq_title"], "Home Slush Sourcing FAQ")
+        self.assertEqual(
+            [item["title"] for item in payload["operational_fit_items"]],
+            ["Parent Footprint Fit"],
+        )
+        self.assertEqual(
+            [item["title"] for item in payload["buyer_review_focus_items"]],
+            ["Parent Throughput Framing"],
+        )
+        self.assertEqual(
+            [item["question"] for item in payload["sourcing_faq_items"]],
+            [
+                "How should buyers compare home use slush machine models?",
+                "What should buyers confirm before requesting a home use slush machine quote?",
+            ],
+        )
 
     def test_leaf_category_products_endpoint_rejects_subcategory_filter(self) -> None:
         response = self.client.get(
@@ -981,3 +1136,256 @@ class ImportCategoryOperationalItemsCommandTests(TestCase):
         self.child_category.refresh_from_db()
         self.assertEqual(self.child_category.operational_fit_title, "Operational Fit")
         self.assertEqual(self.parent_category.operational_fit_title, "")
+
+
+class ImportCategoryFaqsCommandTests(TestCase):
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.parent_category = ProductCategory.objects.create(
+            name="Ice Cream Machine",
+            slug="ice-cream-machine",
+            url_path="/products/ice-cream-machine/",
+            h1="Ice Cream Machine",
+            seo_title="Ice Cream Machine | PRO-TAYLOR",
+            meta_description="Ice Cream Machine meta description",
+            status=ProductCategory.Status.PUBLISHED,
+            index_mode=ProductCategory.IndexMode.INDEX,
+        )
+        cls.child_category = ProductCategory.objects.create(
+            name="Gelato Batch Freezer",
+            slug="gelato-batch-freezer",
+            url_path="/products/gelato-batch-freezer/",
+            h1="Gelato Batch Freezer",
+            seo_title="Gelato Batch Freezer | PRO-TAYLOR",
+            meta_description="Gelato Batch Freezer meta description",
+            status=ProductCategory.Status.PUBLISHED,
+            index_mode=ProductCategory.IndexMode.INDEX,
+            parent=cls.parent_category,
+        )
+
+    def _build_category_faq_seed_workbook(
+        self,
+        *,
+        groups: list[dict[str, object]],
+    ) -> str:
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Category Sourcing FAQ Seed"
+        sheet.append(
+            [
+                "source_category",
+                "source_subcategory",
+                "target_scope",
+                "target_category_slug",
+                "target_category_name",
+                "placement_code",
+                "sourcing_faq_title",
+                "sort_order",
+                "question",
+                "answer",
+                "is_active",
+                "source_fields_used",
+                "primary_source_url",
+                "secondary_source_url",
+                "evidence_note",
+                "confidence",
+            ]
+        )
+        for group in groups:
+            for row in group["rows"]:
+                sheet.append(
+                    [
+                        group["source_category"],
+                        group["source_subcategory"],
+                        group["target_scope"],
+                        group["target_category_slug"],
+                        group["target_category_name"],
+                        group["placement_code"],
+                        group["sourcing_faq_title"],
+                        row["sort_order"],
+                        row["question"],
+                        row["answer"],
+                        row["is_active"],
+                        "summary;selection_guide",
+                        "https://example.com/primary",
+                        "https://example.com/secondary",
+                        "Evidence note",
+                        0.95,
+                    ]
+                )
+
+        handle = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+        handle.close()
+        workbook.save(handle.name)
+        workbook.close()
+        return handle.name
+
+    def test_import_category_faqs_imports_parent_all_seed(self) -> None:
+        workbook_path = self._build_category_faq_seed_workbook(
+            groups=[
+                {
+                    "source_category": "Ice Cream Machine",
+                    "source_subcategory": "── All ──",
+                    "target_scope": "parent_all",
+                    "target_category_slug": "ice-cream-machine",
+                    "target_category_name": "Ice Cream Machine",
+                    "placement_code": "plp_sourcing",
+                    "sourcing_faq_title": "Sourcing FAQ",
+                    "rows": [
+                        {
+                            "sort_order": 1,
+                            "question": "How should buyers split soft serve, gelato, and rolled ice cream paths?",
+                            "answer": "Use product style, service rhythm, and operator workflow to separate soft serve, batch freezing, and roll-plate equipment before shortlisting.",
+                            "is_active": True,
+                        },
+                        {
+                            "sort_order": 2,
+                            "question": "What details should be prepared before asking for an ice cream machine quote?",
+                            "answer": "Prepare target format, peak output, voltage, cooling style, and counter or kitchen limits so suppliers can confirm the correct machine family.",
+                            "is_active": True,
+                        },
+                        {
+                            "sort_order": 3,
+                            "question": "Which site constraints usually change the recommended ice cream machine family?",
+                            "answer": "Rush pattern, working space, ventilation, and cleaning discipline can move a project toward soft serve, gelato batch, or rolled ice cream equipment.",
+                            "is_active": True,
+                        },
+                    ],
+                }
+            ]
+        )
+
+        try:
+            call_command("import_category_faqs", excel=workbook_path)
+        finally:
+            Path(workbook_path).unlink(missing_ok=True)
+
+        self.parent_category.refresh_from_db()
+        self.assertEqual(self.parent_category.sourcing_faq_title, "Sourcing FAQ")
+        parent_items = list(
+            ProductCategoryFaqItem.objects.filter(category=self.parent_category).order_by("sort_order")
+        )
+        self.assertEqual(len(parent_items), 3)
+        self.assertEqual(
+            [(item.placement_code, item.sort_order) for item in parent_items],
+            [("plp_sourcing", 1), ("plp_sourcing", 2), ("plp_sourcing", 3)],
+        )
+        self.assertEqual(
+            [item.question for item in parent_items],
+            [
+                "How should buyers split soft serve, gelato, and rolled ice cream paths?",
+                "What details should be prepared before asking for an ice cream machine quote?",
+                "Which site constraints usually change the recommended ice cream machine family?",
+            ],
+        )
+
+    def test_import_category_faqs_replaces_existing_rows_on_rerun(self) -> None:
+        ProductCategoryFaqItem.objects.create(
+            category=self.parent_category,
+            placement=ProductCategoryFaqItem.Placement.PLP_SOURCING,
+            question="Legacy question",
+            answer="Legacy answer",
+            sort_order=1,
+        )
+        self.parent_category.sourcing_faq_title = "Legacy FAQ"
+        self.parent_category.save(update_fields=("sourcing_faq_title",))
+
+        workbook_path = self._build_category_faq_seed_workbook(
+            groups=[
+                {
+                    "source_category": "Ice Cream Machine",
+                    "source_subcategory": "── All ──",
+                    "target_scope": "parent_all",
+                    "target_category_slug": "ice-cream-machine",
+                    "target_category_name": "Ice Cream Machine",
+                    "placement_code": "plp_sourcing",
+                    "sourcing_faq_title": "New Sourcing FAQ",
+                    "rows": [
+                        {
+                            "sort_order": 1,
+                            "question": "How do buyers know when a family-level comparison is enough?",
+                            "answer": "Start with service model and product format, then confirm output and utility limits before asking suppliers to validate a final shortlist.",
+                            "is_active": True,
+                        },
+                        {
+                            "sort_order": 2,
+                            "question": "What quote inputs matter most for a category-level ice cream machine inquiry?",
+                            "answer": "Peak servings, preferred format, voltage, cooling style, and working-space limits usually determine which machine family survives the first review.",
+                            "is_active": True,
+                        },
+                        {
+                            "sort_order": 3,
+                            "question": "What usually pushes a buyer into the wrong ice cream machine family?",
+                            "answer": "Ignoring rush length, ventilation, cleaning windows, or operator workflow often sends the inquiry toward the wrong machine class.",
+                            "is_active": False,
+                        },
+                    ],
+                }
+            ]
+        )
+
+        try:
+            call_command("import_category_faqs", excel=workbook_path)
+        finally:
+            Path(workbook_path).unlink(missing_ok=True)
+
+        self.parent_category.refresh_from_db()
+        self.assertEqual(self.parent_category.sourcing_faq_title, "New Sourcing FAQ")
+        parent_items = list(
+            ProductCategoryFaqItem.objects.filter(category=self.parent_category).order_by("sort_order")
+        )
+        self.assertEqual(len(parent_items), 3)
+        self.assertNotIn("Legacy question", [item.question for item in parent_items])
+        self.assertFalse(parent_items[-1].is_active)
+
+    def test_import_category_faqs_imports_subcategory_seed_to_child_category(self) -> None:
+        workbook_path = self._build_category_faq_seed_workbook(
+            groups=[
+                {
+                    "source_category": "Ice Cream Machine",
+                    "source_subcategory": "Gelato Batch Freezer",
+                    "target_scope": "subcategory",
+                    "target_category_slug": "gelato-batch-freezer",
+                    "target_category_name": "Gelato Batch Freezer",
+                    "placement_code": "plp_sourcing",
+                    "sourcing_faq_title": "Gelato Sourcing FAQ",
+                    "rows": [
+                        {
+                            "sort_order": 1,
+                            "question": "When is a gelato batch freezer the right subcategory instead of soft serve equipment?",
+                            "answer": "Choose a gelato batch freezer when the operator needs discrete batch production, texture control, and pan handoff instead of continuous draw dispensing.",
+                            "is_active": True,
+                        },
+                        {
+                            "sort_order": 2,
+                            "question": "What should buyers prepare before asking for a gelato batch freezer quote?",
+                            "answer": "Prepare batch size, cycle target, kitchen power, condenser limits, and pan-transfer workflow so suppliers can confirm the correct freezer size.",
+                            "is_active": True,
+                        },
+                        {
+                            "sort_order": 3,
+                            "question": "Which constraints most often break fit for a gelato batch freezer project?",
+                            "answer": "Tight transfer space, weak ventilation, unrealistic cycle expectations, and limited operator discipline usually change the final freezer recommendation.",
+                            "is_active": True,
+                        },
+                    ],
+                }
+            ]
+        )
+
+        try:
+            call_command("import_category_faqs", excel=workbook_path)
+        finally:
+            Path(workbook_path).unlink(missing_ok=True)
+
+        child_items = list(
+            ProductCategoryFaqItem.objects.filter(category=self.child_category).order_by("sort_order")
+        )
+        self.assertEqual(len(child_items), 3)
+        self.assertEqual(child_items[0].question, "When is a gelato batch freezer the right subcategory instead of soft serve equipment?")
+        self.assertEqual(child_items[-1].sort_order, 3)
+
+        self.parent_category.refresh_from_db()
+        self.child_category.refresh_from_db()
+        self.assertEqual(self.child_category.sourcing_faq_title, "Gelato Sourcing FAQ")
+        self.assertEqual(self.parent_category.sourcing_faq_title, "")
