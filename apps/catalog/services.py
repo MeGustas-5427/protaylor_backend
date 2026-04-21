@@ -9,6 +9,8 @@ from ninja.errors import HttpError
 from apps.catalog.models import (
     Product,
     ProductCategory,
+    ProductCategoryComparisonOverview,
+    ProductCategoryComparisonRow,
     ProductCategoryFaqItem,
     ProductCategoryOperationalItem,
     ProductDownload,
@@ -23,6 +25,10 @@ from apps.catalog.models import (
 from apps.content.models import FAQItem, ResourceArticle
 from apps.core.models import PageSEO
 from apps.catalog.schemas import (
+    CategoryComparisonCellSchema,
+    CategoryComparisonOverviewSchema,
+    CategoryComparisonRowSchema,
+    CategoryComparisonSubjectSchema,
     CategoryFaqItemSchema,
     CategoryOperationalItemSchema,
     CategoryOverviewCardSchema,
@@ -135,6 +141,50 @@ def _serialize_category_faq_item(item: ProductCategoryFaqItem) -> CategoryFaqIte
     )
 
 
+def _serialize_category_comparison_overview(
+    overview: ProductCategoryComparisonOverview,
+) -> CategoryComparisonOverviewSchema:
+    subjects = sorted(
+        overview.subjects_json or [],
+        key=lambda item: (int(item.get("sort_order", 0)), str(item.get("subject_key", ""))),
+    )
+    subject_schemas = [
+        CategoryComparisonSubjectSchema(
+            subject_key=str(subject["subject_key"]),
+            label=str(subject["label"]),
+            route_category_slug=str(subject["route_category_slug"]),
+            sort_order=int(subject["sort_order"]),
+        )
+        for subject in subjects
+    ]
+
+    row_schemas: list[CategoryComparisonRowSchema] = []
+    for row in getattr(overview, "ordered_rows", []):
+        cells = [
+            CategoryComparisonCellSchema(
+                subject_key=subject.subject_key,
+                body=str(row.cells_json.get(subject.subject_key, "")),
+            )
+            for subject in subject_schemas
+        ]
+        row_schemas.append(
+            CategoryComparisonRowSchema(
+                row_key=row.row_key,
+                label=row.label,
+                sort_order=row.sort_order,
+                cells=cells,
+            )
+        )
+
+    return CategoryComparisonOverviewSchema(
+        title=overview.title,
+        intro=overview.intro or "",
+        dimension_heading=overview.dimension_heading,
+        subjects=subject_schemas,
+        rows=row_schemas,
+    )
+
+
 def _split_category_operational_items(
     items: Iterable[ProductCategoryOperationalItem],
 ) -> tuple[list[CategoryOperationalItemSchema], list[CategoryOperationalItemSchema]]:
@@ -166,6 +216,33 @@ def _load_category_sourcing_faq_content(
         category.sourcing_faq_title or DEFAULT_SOURCING_FAQ_TITLE,
         [_serialize_category_faq_item(item) for item in items],
     )
+
+
+def _load_category_comparison_overview(
+    category: ProductCategory,
+) -> CategoryComparisonOverviewSchema | None:
+    overview = (
+        ProductCategoryComparisonOverview.objects.filter(category=category, is_active=True)
+        .select_related("category")
+        .prefetch_related(
+            Prefetch(
+                "rows",
+                queryset=ProductCategoryComparisonRow.objects.filter(is_active=True).order_by(
+                    "sort_order", "id"
+                ),
+                to_attr="ordered_rows",
+            )
+        )
+        .only("id", "category_id", "title", "intro", "dimension_heading", "subjects_json", "is_active")
+        .first()
+    )
+    if not overview:
+        return None
+    if not overview.subjects_json:
+        return None
+    if not getattr(overview, "ordered_rows", []):
+        return None
+    return _serialize_category_comparison_overview(overview)
 
 
 def _load_category_operational_content(
@@ -524,6 +601,7 @@ def get_category_product_listing(
     active_subcategory_slug: str | None = None
     subcategory_tabs: list[SubcategoryTabSchema] = []
     operational_content_category: ProductCategory | None = None
+    comparison_overview: CategoryComparisonOverviewSchema | None = None
     product_filter = Q(category=category)
 
     if child_categories:
@@ -601,6 +679,8 @@ def get_category_product_listing(
         buyer_review_focus_items,
     ) = _load_category_operational_content(category)
     sourcing_faq_title, sourcing_faq_items = _load_category_sourcing_faq_content(category)
+    if operational_content_category is None:
+        comparison_overview = _load_category_comparison_overview(category)
 
     if operational_content_category is not None:
         (
@@ -633,6 +713,7 @@ def get_category_product_listing(
         seo_title=category.seo_title,
         meta_description=category.meta_description,
         summary=category.summary or "",
+        comparison_overview=comparison_overview,
         operational_fit_title=operational_fit_title,
         operational_fit_items=operational_fit_items,
         buyer_review_focus_title=buyer_review_focus_title,

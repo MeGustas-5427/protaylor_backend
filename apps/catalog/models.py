@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from enum import IntEnum
+from typing import Any
 
+from django.core.validators import MaxLengthValidator
 from django.contrib.contenttypes.fields import GenericRelation
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -330,6 +333,252 @@ class ProductCategoryFaqItem(TimeStampedModel, ActivatableModel, OrderedModel):
 
     def __str__(self) -> str:
         return f"{self.category.name}: {self.question}"
+
+
+class ProductCategoryComparisonOverview(TimeStampedModel, ActivatableModel):
+    category = models.OneToOneField(
+        ProductCategory,
+        verbose_name=_("所属分类"),
+        on_delete=models.CASCADE,
+        related_name="comparison_overview",
+        help_text="分类列表页 Comparison Overview 的模块级配置。",
+    )
+    title = models.CharField(
+        _("模块标题"),
+        max_length=160,
+        help_text="Comparison Overview 模块标题。",
+    )
+    intro = models.TextField(
+        _("模块导语"),
+        blank=True,
+        validators=[MaxLengthValidator(220)],
+        help_text="Comparison Overview 模块引导语。建议 1-2 句，并控制在 220 个字符以内，避免压坏页面布局。",
+    )
+    dimension_heading = models.CharField(
+        _("维度列表头"),
+        max_length=80,
+        default="Decision Dimension",
+        help_text="对比矩阵第一列表头。",
+    )
+    subjects_json = models.JSONField(
+        _("对比列定义"),
+        default=list,
+        blank=True,
+        help_text=(
+            "数组结构，至少包含 subject_key、label、route_category_slug、sort_order。"
+        ),
+    )
+
+    class Meta:
+        db_table = "product_category_comparison_overview"
+        verbose_name = "分类 Comparison Overview"
+        verbose_name_plural = "分类 Comparison Overview"
+        indexes = [
+            models.Index(
+                fields=("is_active",),
+                name="idx_cat_cmp_overview_active",
+            )
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        self.subjects_json = self.validate_subjects_payload(self.subjects_json)
+        if self.category_id and self.subjects_json:
+            route_slugs = [subject["route_category_slug"] for subject in self.subjects_json]
+            route_categories = {
+                category.slug: category
+                for category in ProductCategory.objects.filter(slug__in=route_slugs).select_related("parent")
+            }
+
+            missing_slugs = sorted(set(route_slugs) - set(route_categories.keys()))
+            if missing_slugs:
+                raise ValidationError(
+                    {
+                        "subjects_json": (
+                            "subjects_json contains unknown route_category_slug values: "
+                            + ", ".join(missing_slugs)
+                        )
+                    }
+                )
+
+            invalid_slugs = sorted(
+                subject["route_category_slug"]
+                for subject in self.subjects_json
+                if route_categories[subject["route_category_slug"]].parent_id != self.category_id
+            )
+            if invalid_slugs:
+                raise ValidationError(
+                    {
+                        "subjects_json": (
+                            "subjects_json route_category_slug values must resolve to direct children of "
+                            f"{self.category.slug!r}: {', '.join(invalid_slugs)}"
+                        )
+                    }
+                )
+
+    @staticmethod
+    def validate_subjects_payload(value: Any) -> list[dict[str, Any]]:
+        if value in ("", None):
+            return []
+        if not isinstance(value, list):
+            raise ValidationError({"subjects_json": "subjects_json must be a list."})
+
+        normalized: list[dict[str, Any]] = []
+        seen_keys: set[str] = set()
+        seen_orders: set[int] = set()
+
+        for index, item in enumerate(value, start=1):
+            if not isinstance(item, dict):
+                raise ValidationError(
+                    {"subjects_json": f"subjects_json item {index} must be an object."}
+                )
+
+            subject_key = str(item.get("subject_key") or "").strip()
+            label = str(item.get("label") or "").strip()
+            route_category_slug = str(item.get("route_category_slug") or "").strip()
+
+            if not subject_key:
+                raise ValidationError(
+                    {"subjects_json": f"subjects_json item {index} requires subject_key."}
+                )
+            if not label:
+                raise ValidationError(
+                    {"subjects_json": f"subjects_json item {index} requires label."}
+                )
+            if not route_category_slug:
+                raise ValidationError(
+                    {
+                        "subjects_json": (
+                            f"subjects_json item {index} requires route_category_slug."
+                        )
+                    }
+                )
+
+            sort_order_raw = item.get("sort_order")
+            try:
+                sort_order = int(sort_order_raw)
+            except (TypeError, ValueError) as exc:
+                raise ValidationError(
+                    {"subjects_json": f"subjects_json item {index} has invalid sort_order."}
+                ) from exc
+
+            if subject_key in seen_keys:
+                raise ValidationError(
+                    {"subjects_json": f"Duplicate subject_key {subject_key!r} is not allowed."}
+                )
+            if sort_order in seen_orders:
+                raise ValidationError(
+                    {"subjects_json": f"Duplicate sort_order {sort_order} is not allowed."}
+                )
+
+            seen_keys.add(subject_key)
+            seen_orders.add(sort_order)
+            normalized.append(
+                {
+                    "subject_key": subject_key,
+                    "label": label,
+                    "route_category_slug": route_category_slug,
+                    "sort_order": sort_order,
+                }
+            )
+
+        return sorted(normalized, key=lambda item: (item["sort_order"], item["subject_key"]))
+
+    def __str__(self) -> str:
+        return f"{self.category.name}: Comparison Overview"
+
+
+class ProductCategoryComparisonRow(TimeStampedModel, ActivatableModel, OrderedModel):
+    overview = models.ForeignKey(
+        ProductCategoryComparisonOverview,
+        verbose_name=_("所属 Comparison Overview"),
+        on_delete=models.CASCADE,
+        related_name="rows",
+        help_text="Comparison Overview 下的单行对比维度。",
+    )
+    row_key = models.CharField(
+        _("行标识"),
+        max_length=80,
+        help_text="稳定的业务 key，例如 best_fit_service_format。",
+    )
+    label = models.CharField(
+        _("行标题"),
+        max_length=120,
+        help_text="对比矩阵左侧行标题。",
+    )
+    cells_json = models.JSONField(
+        _("对比单元格"),
+        default=dict,
+        blank=True,
+        help_text="以 subject_key 为 key、文案为 value 的映射。",
+    )
+
+    class Meta(OrderedModel.Meta):
+        db_table = "product_category_comparison_row"
+        verbose_name = "分类 Comparison Overview 行"
+        verbose_name_plural = "分类 Comparison Overview 行"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("overview", "row_key"),
+                name="uniq_cat_cmp_row_key",
+            ),
+            models.UniqueConstraint(
+                fields=("overview", "sort_order"),
+                name="uniq_cat_cmp_row_sort",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("overview", "is_active", "sort_order"),
+                name="idx_cat_cmp_row_q",
+            )
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        self.cells_json = self.validate_cells_payload(self.cells_json)
+        if self.overview_id and self.overview.subjects_json:
+            expected_keys = {subject["subject_key"] for subject in self.overview.subjects_json}
+            actual_keys = set(self.cells_json.keys())
+            if actual_keys != expected_keys:
+                missing = sorted(expected_keys - actual_keys)
+                extra = sorted(actual_keys - expected_keys)
+                parts: list[str] = []
+                if missing:
+                    parts.append(f"missing keys: {', '.join(missing)}")
+                if extra:
+                    parts.append(f"unexpected keys: {', '.join(extra)}")
+                raise ValidationError(
+                    {
+                        "cells_json": (
+                            "cells_json keys must match subjects_json exactly; " + "; ".join(parts)
+                        )
+                    }
+                )
+
+    @staticmethod
+    def validate_cells_payload(value: Any) -> dict[str, str]:
+        if value in ("", None):
+            return {}
+        if not isinstance(value, dict):
+            raise ValidationError({"cells_json": "cells_json must be an object."})
+
+        normalized: dict[str, str] = {}
+        for key, body in value.items():
+            subject_key = str(key or "").strip()
+            if not subject_key:
+                raise ValidationError({"cells_json": "cells_json keys must be non-empty strings."})
+
+            body_text = str(body or "").strip()
+            if not body_text:
+                raise ValidationError(
+                    {"cells_json": f"cells_json[{subject_key!r}] must be a non-empty string."}
+                )
+            normalized[subject_key] = body_text
+        return normalized
+
+    def __str__(self) -> str:
+        return f"{self.overview.category.name}: {self.label}"
 
 
 class Product(SeoFieldsMixin):

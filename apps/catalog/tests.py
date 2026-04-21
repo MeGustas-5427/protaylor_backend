@@ -13,6 +13,8 @@ from openpyxl import Workbook
 from apps.catalog.models import (
     Product,
     ProductCategory,
+    ProductCategoryComparisonOverview,
+    ProductCategoryComparisonRow,
     ProductCategoryFaqItem,
     ProductCategoryOperationalItem,
     ProductMedia,
@@ -290,6 +292,65 @@ class CatalogApiTests(TestCase):
                 ),
             ]
         )
+        cls.parent_comparison_overview = ProductCategoryComparisonOverview.objects.create(
+            category=cls.parent_category,
+            title="Ice Cream Machine Route Comparison",
+            intro=(
+                "Use this table to decide whether soft serve, batch freezing, or roll ice cream "
+                "is the right production route before comparing individual models."
+            ),
+            dimension_heading="Decision Dimension",
+            subjects_json=[
+                {
+                    "subject_key": "soft_ice_cream_machine",
+                    "label": "Soft Ice Cream Machine",
+                    "route_category_slug": "soft-ice-cream-machine",
+                    "sort_order": 1,
+                },
+                {
+                    "subject_key": "gelato_batch_freezer",
+                    "label": "Gelato Batch Freezer",
+                    "route_category_slug": "gelato-batch-freezer",
+                    "sort_order": 2,
+                },
+                {
+                    "subject_key": "roll_ice_cream_machine",
+                    "label": "Roll Ice Cream Machine",
+                    "route_category_slug": "roll-ice-cream-machine",
+                    "sort_order": 3,
+                },
+            ],
+        )
+        ProductCategoryComparisonRow.objects.bulk_create(
+            [
+                ProductCategoryComparisonRow(
+                    overview=cls.parent_comparison_overview,
+                    row_key="best_fit_service_format",
+                    label="Best-Fit Service Format",
+                    sort_order=10,
+                    cells_json={
+                        "soft_ice_cream_machine": "Direct-draw service from the machine during service.",
+                        "gelato_batch_freezer": (
+                            "Batch-freeze product, then extract it for serving, holding, or later hardening."
+                        ),
+                        "roll_ice_cream_machine": (
+                            "Freeze the mix on a pan, scrape it, and serve each order directly."
+                        ),
+                    },
+                ),
+                ProductCategoryComparisonRow(
+                    overview=cls.parent_comparison_overview,
+                    row_key="production_rhythm",
+                    label="Production Rhythm",
+                    sort_order=20,
+                    cells_json={
+                        "soft_ice_cream_machine": "Continuous dispensing during service.",
+                        "gelato_batch_freezer": "Planned batch cycles with refill and restart between runs.",
+                        "roll_ice_cream_machine": "One-pan or two-pan made-to-order preparation.",
+                    },
+                ),
+            ]
+        )
 
         cls.single_child_parent = create_category(
             name="Home Use Slush Machine",
@@ -555,6 +616,23 @@ class CatalogApiTests(TestCase):
                 "What details should be prepared before requesting a quote?",
             ],
         )
+        self.assertIsNotNone(payload["comparison_overview"])
+        self.assertEqual(
+            payload["comparison_overview"]["title"],
+            "Ice Cream Machine Route Comparison",
+        )
+        self.assertEqual(
+            [item["subject_key"] for item in payload["comparison_overview"]["subjects"]],
+            [
+                "soft_ice_cream_machine",
+                "gelato_batch_freezer",
+                "roll_ice_cream_machine",
+            ],
+        )
+        self.assertEqual(
+            [row["row_key"] for row in payload["comparison_overview"]["rows"]],
+            ["best_fit_service_format", "production_rhythm"],
+        )
 
     def test_parent_category_products_endpoint_filters_by_subcategory(self) -> None:
         response = self.client.get(
@@ -585,6 +663,7 @@ class CatalogApiTests(TestCase):
                 "Why does kitchen workflow matter for gelato batch freezers?",
             ],
         )
+        self.assertIsNone(payload["comparison_overview"])
 
     def test_parent_category_products_endpoint_falls_back_to_parent_operational_content_when_child_has_none(self) -> None:
         response = self.client.get(
@@ -612,6 +691,7 @@ class CatalogApiTests(TestCase):
                 "What details should be prepared before requesting a quote?",
             ],
         )
+        self.assertIsNone(payload["comparison_overview"])
 
     def test_single_child_parent_products_endpoint_hides_tabs_but_aggregates_child(self) -> None:
         response = self.client.get("/api/v1/catalog/categories/home-use-slush-machine/products")
@@ -641,6 +721,7 @@ class CatalogApiTests(TestCase):
                 "What should buyers confirm before requesting a home use slush machine quote?",
             ],
         )
+        self.assertIsNone(payload["comparison_overview"])
 
     def test_leaf_category_products_endpoint_rejects_subcategory_filter(self) -> None:
         response = self.client.get(
@@ -1389,3 +1470,511 @@ class ImportCategoryFaqsCommandTests(TestCase):
         self.child_category.refresh_from_db()
         self.assertEqual(self.child_category.sourcing_faq_title, "Gelato Sourcing FAQ")
         self.assertEqual(self.parent_category.sourcing_faq_title, "")
+
+
+class CategoryComparisonOverviewApiTests(TestCase):
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.parent_category = ProductCategory.objects.create(
+            name="Ice Cream Machine",
+            slug="ice-cream-machine",
+            url_path="/products/ice-cream-machine/",
+            h1="Ice Cream Machine",
+            summary="Ice Cream Machine summary",
+            lead_text="Ice Cream Machine lead text",
+            seo_title="Ice Cream Machine | PRO-TAYLOR",
+            meta_description="Ice Cream Machine meta description",
+            primary_query="ice cream machine",
+            status=ProductCategory.Status.PUBLISHED,
+            index_mode=ProductCategory.IndexMode.INDEX,
+        )
+        cls.soft_child = ProductCategory.objects.create(
+            name="Soft Ice Cream Machine",
+            slug="soft-ice-cream-machine",
+            url_path="/products/soft-ice-cream-machine/",
+            h1="Soft Ice Cream Machine",
+            summary="Soft Ice Cream Machine summary",
+            lead_text="Soft Ice Cream Machine lead text",
+            seo_title="Soft Ice Cream Machine | PRO-TAYLOR",
+            meta_description="Soft Ice Cream Machine meta description",
+            primary_query="soft ice cream machine",
+            status=ProductCategory.Status.PUBLISHED,
+            index_mode=ProductCategory.IndexMode.INDEX,
+            parent=cls.parent_category,
+        )
+        cls.gelato_child = ProductCategory.objects.create(
+            name="Gelato Batch Freezer",
+            slug="gelato-batch-freezer",
+            url_path="/products/gelato-batch-freezer/",
+            h1="Gelato Batch Freezer",
+            summary="Gelato Batch Freezer summary",
+            lead_text="Gelato Batch Freezer lead text",
+            seo_title="Gelato Batch Freezer | PRO-TAYLOR",
+            meta_description="Gelato Batch Freezer meta description",
+            primary_query="gelato batch freezer",
+            status=ProductCategory.Status.PUBLISHED,
+            index_mode=ProductCategory.IndexMode.INDEX,
+            parent=cls.parent_category,
+        )
+        cls.roll_child = ProductCategory.objects.create(
+            name="Roll Ice Cream Machine",
+            slug="roll-ice-cream-machine",
+            url_path="/products/roll-ice-cream-machine/",
+            h1="Roll Ice Cream Machine",
+            summary="Roll Ice Cream Machine summary",
+            lead_text="Roll Ice Cream Machine lead text",
+            seo_title="Roll Ice Cream Machine | PRO-TAYLOR",
+            meta_description="Roll Ice Cream Machine meta description",
+            primary_query="roll ice cream machine",
+            status=ProductCategory.Status.PUBLISHED,
+            index_mode=ProductCategory.IndexMode.INDEX,
+            parent=cls.parent_category,
+        )
+
+        for category, slug, name in [
+            (cls.parent_category, "ice-cream-machine-direct-model", "Ice Cream Machine Direct Model"),
+            (cls.gelato_child, "gelato-test-model", "Gelato Test Model"),
+        ]:
+            Product.objects.create(
+                category=category,
+                slug=slug,
+                url_path=f"/products/{category.slug}/{slug}/",
+                name=name,
+                model_code=slug.upper(),
+                h1=name,
+                summary=f"{name} summary",
+                lead_text=f"{name} lead text",
+                seo_title=f"{name} | PRO-TAYLOR",
+                meta_description=f"{name} meta description",
+                primary_query=name.lower(),
+                status=Product.Status.PUBLISHED,
+                index_mode=Product.IndexMode.INDEX,
+                is_canonical=True,
+            )
+
+        overview = ProductCategoryComparisonOverview.objects.create(
+            category=cls.parent_category,
+            title="Ice Cream Machine Route Comparison",
+            intro="Use this table to split routes before comparing specific models.",
+            dimension_heading="Decision Dimension",
+            subjects_json=[
+                {
+                    "subject_key": "soft_ice_cream_machine",
+                    "label": "Soft Ice Cream Machine",
+                    "route_category_slug": "soft-ice-cream-machine",
+                    "sort_order": 1,
+                },
+                {
+                    "subject_key": "gelato_batch_freezer",
+                    "label": "Gelato Batch Freezer",
+                    "route_category_slug": "gelato-batch-freezer",
+                    "sort_order": 2,
+                },
+                {
+                    "subject_key": "roll_ice_cream_machine",
+                    "label": "Roll Ice Cream Machine",
+                    "route_category_slug": "roll-ice-cream-machine",
+                    "sort_order": 3,
+                },
+            ],
+        )
+        ProductCategoryComparisonRow.objects.bulk_create(
+            [
+                ProductCategoryComparisonRow(
+                    overview=overview,
+                    row_key="best_fit_service_format",
+                    label="Best-Fit Service Format",
+                    sort_order=10,
+                    cells_json={
+                        "soft_ice_cream_machine": "Direct-draw service from the machine during service.",
+                        "gelato_batch_freezer": "Batch-freeze product, then extract it for serving.",
+                        "roll_ice_cream_machine": "Freeze the mix on a pan, scrape it, and serve each order directly.",
+                    },
+                ),
+                ProductCategoryComparisonRow(
+                    overview=overview,
+                    row_key="production_rhythm",
+                    label="Production Rhythm",
+                    sort_order=20,
+                    cells_json={
+                        "soft_ice_cream_machine": "Continuous dispensing during service.",
+                        "gelato_batch_freezer": "Planned batch cycles with refill and restart between runs.",
+                        "roll_ice_cream_machine": "One-pan or two-pan made-to-order preparation.",
+                    },
+                ),
+            ]
+        )
+
+    def test_parent_category_products_endpoint_returns_comparison_overview(self) -> None:
+        response = self.client.get("/api/v1/catalog/categories/ice-cream-machine/products")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIsNotNone(payload["comparison_overview"])
+        self.assertEqual(payload["comparison_overview"]["title"], "Ice Cream Machine Route Comparison")
+        self.assertEqual(
+            [subject["subject_key"] for subject in payload["comparison_overview"]["subjects"]],
+            [
+                "soft_ice_cream_machine",
+                "gelato_batch_freezer",
+                "roll_ice_cream_machine",
+            ],
+        )
+        self.assertEqual(
+            [row["row_key"] for row in payload["comparison_overview"]["rows"]],
+            ["best_fit_service_format", "production_rhythm"],
+        )
+
+    def test_subcategory_filtered_products_endpoint_hides_comparison_overview(self) -> None:
+        response = self.client.get(
+            "/api/v1/catalog/categories/ice-cream-machine/products?subcategory_slug=gelato-batch-freezer"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["active_subcategory_slug"], "gelato-batch-freezer")
+        self.assertEqual(payload["pagination"]["total_items"], 1)
+        self.assertIsNone(payload["comparison_overview"])
+
+
+class ImportCategoryComparisonOverviewCommandTests(TestCase):
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.parent_category = ProductCategory.objects.create(
+            name="Ice Cream Machine",
+            slug="ice-cream-machine",
+            url_path="/products/ice-cream-machine/",
+            h1="Ice Cream Machine",
+            seo_title="Ice Cream Machine | PRO-TAYLOR",
+            meta_description="Ice Cream Machine meta description",
+            status=ProductCategory.Status.PUBLISHED,
+            index_mode=ProductCategory.IndexMode.INDEX,
+        )
+        for name, slug in [
+            ("Soft Ice Cream Machine", "soft-ice-cream-machine"),
+            ("Gelato Batch Freezer", "gelato-batch-freezer"),
+            ("Roll Ice Cream Machine", "roll-ice-cream-machine"),
+        ]:
+            ProductCategory.objects.create(
+                name=name,
+                slug=slug,
+                url_path=f"/products/{slug}/",
+                h1=name,
+                seo_title=f"{name} | PRO-TAYLOR",
+                meta_description=f"{name} meta description",
+                status=ProductCategory.Status.PUBLISHED,
+                index_mode=ProductCategory.IndexMode.INDEX,
+                parent=cls.parent_category,
+            )
+
+    def _build_category_comparison_workbook(
+        self,
+        *,
+        subjects: list[dict[str, object]],
+        rows: list[dict[str, object]],
+    ) -> str:
+        workbook = Workbook()
+        workbook.active.title = "Workbook Meta"
+        ordered_subjects = sorted(
+            subjects,
+            key=lambda subject: (int(subject["sort_order"]), str(subject["subject_key"])),
+        )
+        subject_slots = max(4, len(ordered_subjects))
+
+        subject_sheet = workbook.create_sheet("Comparison Overview Subjects")
+        subject_sheet.append(
+            [
+                "category_name",
+                "category_slug",
+                "subject_key",
+                "sort_order",
+                "route_category_name",
+                "route_category_slug",
+                "label_override",
+                "status",
+                "source_doc",
+                "notes",
+            ]
+        )
+        for subject in subjects:
+            subject_sheet.append(
+                [
+                    subject["category_name"],
+                    subject["category_slug"],
+                    subject["subject_key"],
+                    subject["sort_order"],
+                    subject["route_category_name"],
+                    subject["route_category_slug"],
+                    subject.get("label_override", ""),
+                    subject.get("status", "active"),
+                    "docs/15-Comparison-Overview-通用后端变更方案-2表版.md",
+                    "Test seed",
+                ]
+            )
+
+        draft_sheet = workbook.create_sheet("Comparison Overview Draft")
+        draft_headers = [
+            "category_name",
+            "category_slug",
+            "module_type",
+            "module_title",
+            "module_intro",
+            "dimension_heading",
+        ]
+        for slot_index in range(1, subject_slots + 1):
+            draft_headers.extend(
+                [
+                    f"subject_{slot_index}_key",
+                    f"subject_{slot_index}_label",
+                ]
+            )
+        draft_headers.extend(
+            [
+                "row_key",
+                "sort_order",
+                "decision_dimension",
+            ]
+        )
+        for slot_index in range(1, subject_slots + 1):
+            draft_headers.extend(
+                [
+                    f"subject_{slot_index}_text",
+                ]
+            )
+        for slot_index in range(1, subject_slots + 1):
+            draft_headers.extend(
+                [
+                    f"subject_{slot_index}_evidence_strength",
+                ]
+            )
+        draft_headers.extend(
+            [
+                "synthesis_flag",
+                "primary_source_summary",
+                "evidence_note",
+                "status",
+                "source_doc",
+            ]
+        )
+        draft_sheet.append(draft_headers)
+        for row in rows:
+            row_values: list[object] = [
+                row["category_name"],
+                row["category_slug"],
+                "comparison_overview",
+                row["module_title"],
+                row["module_intro"],
+                "Decision Dimension",
+            ]
+            for slot_index in range(subject_slots):
+                subject = ordered_subjects[slot_index] if slot_index < len(ordered_subjects) else None
+                row_values.extend(
+                    [
+                        subject["subject_key"] if subject else "",
+                        (subject.get("label_override") or subject["route_category_name"]) if subject else "",
+                    ]
+                )
+
+            row_values.extend(
+                [
+                    row["row_key"],
+                    row["sort_order"],
+                    row["decision_dimension"],
+                ]
+            )
+
+            for slot_index in range(subject_slots):
+                subject = ordered_subjects[slot_index] if slot_index < len(ordered_subjects) else None
+                row_values.append(row[subject["subject_key"]] if subject else "")
+
+            default_evidence_by_slot = {1: "strong", 2: "strong", 3: "medium", 4: ""}
+            for slot_index in range(subject_slots):
+                subject = ordered_subjects[slot_index] if slot_index < len(ordered_subjects) else None
+                row_values.append(
+                    row.get(
+                        f"subject_{slot_index + 1}_evidence_strength",
+                        default_evidence_by_slot.get(slot_index + 1, "medium") if subject else "",
+                    )
+                )
+
+            row_values.extend(
+                [
+                    "no",
+                    "Primary source summary",
+                    "Evidence note",
+                    row.get("status", "finalized_for_staging"),
+                    "docs/13-Ice-Cream-Machine-Draft-Revision.md",
+                ]
+            )
+            draft_sheet.append(row_values)
+
+        handle = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+        handle.close()
+        workbook.save(handle.name)
+        workbook.close()
+        return handle.name
+
+    def test_import_category_comparison_overview_imports_parent_matrix(self) -> None:
+        workbook_path = self._build_category_comparison_workbook(
+            subjects=[
+                {
+                    "category_name": "Ice Cream Machine",
+                    "category_slug": "ice-cream-machine",
+                    "subject_key": "soft_ice_cream_machine",
+                    "sort_order": 1,
+                    "route_category_name": "Soft Ice Cream Machine",
+                    "route_category_slug": "soft-ice-cream-machine",
+                },
+                {
+                    "category_name": "Ice Cream Machine",
+                    "category_slug": "ice-cream-machine",
+                    "subject_key": "gelato_batch_freezer",
+                    "sort_order": 2,
+                    "route_category_name": "Gelato Batch Freezer",
+                    "route_category_slug": "gelato-batch-freezer",
+                },
+                {
+                    "category_name": "Ice Cream Machine",
+                    "category_slug": "ice-cream-machine",
+                    "subject_key": "roll_ice_cream_machine",
+                    "sort_order": 3,
+                    "route_category_name": "Roll Ice Cream Machine",
+                    "route_category_slug": "roll-ice-cream-machine",
+                },
+            ],
+            rows=[
+                {
+                    "category_name": "Ice Cream Machine",
+                    "category_slug": "ice-cream-machine",
+                    "module_title": "Ice Cream Machine Route Comparison",
+                    "module_intro": "Use this table to split routes before comparing specific models.",
+                    "row_key": "best_fit_service_format",
+                    "sort_order": 10,
+                    "decision_dimension": "Best-Fit Service Format",
+                    "soft_ice_cream_machine": "Direct-draw service from the machine during service.",
+                    "gelato_batch_freezer": "Batch-freeze product, then extract it for serving.",
+                    "roll_ice_cream_machine": "Freeze the mix on a pan, scrape it, and serve each order directly.",
+                },
+                {
+                    "category_name": "Ice Cream Machine",
+                    "category_slug": "ice-cream-machine",
+                    "module_title": "Ice Cream Machine Route Comparison",
+                    "module_intro": "Use this table to split routes before comparing specific models.",
+                    "row_key": "production_rhythm",
+                    "sort_order": 20,
+                    "decision_dimension": "Production Rhythm",
+                    "soft_ice_cream_machine": "Continuous dispensing during service.",
+                    "gelato_batch_freezer": "Planned batch cycles with refill and restart between runs.",
+                    "roll_ice_cream_machine": "One-pan or two-pan made-to-order preparation.",
+                },
+            ],
+        )
+
+        try:
+            call_command("import_category_comparison_overview", excel=workbook_path)
+        finally:
+            Path(workbook_path).unlink(missing_ok=True)
+
+        overview = ProductCategoryComparisonOverview.objects.get(category=self.parent_category)
+        rows = list(overview.rows.order_by("sort_order"))
+        self.assertEqual(overview.title, "Ice Cream Machine Route Comparison")
+        self.assertEqual(overview.dimension_heading, "Decision Dimension")
+        self.assertEqual(len(overview.subjects_json), 3)
+        self.assertEqual(
+            [subject["route_category_slug"] for subject in overview.subjects_json],
+            ["soft-ice-cream-machine", "gelato-batch-freezer", "roll-ice-cream-machine"],
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].row_key, "best_fit_service_format")
+        self.assertEqual(
+            rows[1].cells_json["gelato_batch_freezer"],
+            "Planned batch cycles with refill and restart between runs.",
+        )
+
+    def test_import_category_comparison_overview_replaces_existing_rows_on_rerun(self) -> None:
+        overview = ProductCategoryComparisonOverview.objects.create(
+            category=self.parent_category,
+            title="Legacy comparison",
+            intro="Legacy intro",
+            dimension_heading="Legacy heading",
+            subjects_json=[
+                {
+                    "subject_key": "soft_ice_cream_machine",
+                    "label": "Soft Ice Cream Machine",
+                    "route_category_slug": "soft-ice-cream-machine",
+                    "sort_order": 1,
+                },
+                {
+                    "subject_key": "gelato_batch_freezer",
+                    "label": "Gelato Batch Freezer",
+                    "route_category_slug": "gelato-batch-freezer",
+                    "sort_order": 2,
+                },
+            ],
+        )
+        ProductCategoryComparisonRow.objects.create(
+            overview=overview,
+            row_key="legacy_row",
+            label="Legacy Row",
+            sort_order=10,
+            cells_json={
+                "soft_ice_cream_machine": "Legacy soft",
+                "gelato_batch_freezer": "Legacy gelato",
+            },
+        )
+
+        workbook_path = self._build_category_comparison_workbook(
+            subjects=[
+                {
+                    "category_name": "Ice Cream Machine",
+                    "category_slug": "ice-cream-machine",
+                    "subject_key": "soft_ice_cream_machine",
+                    "sort_order": 1,
+                    "route_category_name": "Soft Ice Cream Machine",
+                    "route_category_slug": "soft-ice-cream-machine",
+                },
+                {
+                    "category_name": "Ice Cream Machine",
+                    "category_slug": "ice-cream-machine",
+                    "subject_key": "gelato_batch_freezer",
+                    "sort_order": 2,
+                    "route_category_name": "Gelato Batch Freezer",
+                    "route_category_slug": "gelato-batch-freezer",
+                },
+                {
+                    "category_name": "Ice Cream Machine",
+                    "category_slug": "ice-cream-machine",
+                    "subject_key": "roll_ice_cream_machine",
+                    "sort_order": 3,
+                    "route_category_name": "Roll Ice Cream Machine",
+                    "route_category_slug": "roll-ice-cream-machine",
+                },
+            ],
+            rows=[
+                {
+                    "category_name": "Ice Cream Machine",
+                    "category_slug": "ice-cream-machine",
+                    "module_title": "Updated Route Comparison",
+                    "module_intro": "Updated intro",
+                    "row_key": "operator_interaction",
+                    "sort_order": 10,
+                    "decision_dimension": "Operator Interaction",
+                    "soft_ice_cream_machine": "Monitor mix, dispense product, and keep service moving.",
+                    "gelato_batch_freezer": "Load mix, run the cycle, extract product, and manage the next batch.",
+                    "roll_ice_cream_machine": "Spread, chop, scrape, and plate each order by hand.",
+                },
+            ],
+        )
+
+        try:
+            call_command("import_category_comparison_overview", excel=workbook_path)
+        finally:
+            Path(workbook_path).unlink(missing_ok=True)
+
+        overview.refresh_from_db()
+        rows = list(overview.rows.order_by("sort_order"))
+        self.assertEqual(overview.title, "Updated Route Comparison")
+        self.assertEqual(overview.intro, "Updated intro")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].row_key, "operator_interaction")
+        self.assertNotEqual(rows[0].label, "Legacy Row")

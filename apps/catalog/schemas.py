@@ -81,6 +81,41 @@ class CategoryFaqItemSchema(Schema):
     sort_order: int
 
 
+class CategoryComparisonSubjectSchema(Schema):
+    """分类列表页 Comparison Overview 的列定义。"""
+
+    subject_key: str
+    label: str
+    route_category_slug: str
+    sort_order: int
+
+
+class CategoryComparisonCellSchema(Schema):
+    """分类列表页 Comparison Overview 的单元格。"""
+
+    subject_key: str
+    body: str
+
+
+class CategoryComparisonRowSchema(Schema):
+    """分类列表页 Comparison Overview 的单行对比维度。"""
+
+    row_key: str
+    label: str
+    sort_order: int
+    cells: list[CategoryComparisonCellSchema]
+
+
+class CategoryComparisonOverviewSchema(Schema):
+    """分类列表页 Comparison Overview 模块。"""
+
+    title: str
+    intro: str
+    dimension_heading: str
+    subjects: list[CategoryComparisonSubjectSchema]
+    rows: list[CategoryComparisonRowSchema]
+
+
 class ProductListingItemSchema(Schema):
     """
     分类列表页可直接渲染的产品卡片摘要。
@@ -123,6 +158,7 @@ class ProductCategoryListingResponseSchema(Schema):
     seo_title: str
     meta_description: str
     summary: str
+    comparison_overview: CategoryComparisonOverviewSchema | None = None
     operational_fit_title: str
     operational_fit_items: list[CategoryOperationalItemSchema]
     buyer_review_focus_title: str
