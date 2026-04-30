@@ -11,6 +11,8 @@ from .models import (
     ProductCategoryComparisonOverview,
     ProductCategoryComparisonRow,
     ProductCategoryFaqItem,
+    ProductCategoryGuide,
+    ProductCategoryGuideItem,
     ProductCategoryOperationalItem,
     ProductDownload,
     ProductFeature,
@@ -133,6 +135,30 @@ class ProductCategoryFaqItemInline(admin.TabularInline):
     model = ProductCategoryFaqItem
     extra = 0
     fields = ("placement", "question", "answer", "sort_order", "is_active")
+    show_change_link = True
+
+
+class ProductCategoryGuideItemInline(admin.TabularInline):
+    model = ProductCategoryGuideItem
+    extra = 0
+    autocomplete_fields = ("asset", "target_category", "target_resource")
+    fields = (
+        "section",
+        "item_key",
+        "eyebrow",
+        "title",
+        "body",
+        "supporting_points",
+        "icon",
+        "asset",
+        "asset_alt",
+        "target_category",
+        "target_resource",
+        "href",
+        "cta_label",
+        "sort_order",
+        "is_active",
+    )
     show_change_link = True
 
 
@@ -305,6 +331,85 @@ class ProductCategoryComparisonRowAdmin(TimestampReadonlyAdminMixin, admin.Model
     search_fields = ("label", "row_key", "overview__category__name")
     list_select_related = ("overview", "overview__category")
     autocomplete_fields = ("overview",)
+
+
+@admin.register(ProductCategoryGuide)
+class ProductCategoryGuideAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
+    list_display = ("category", "is_active", "paths_mode_code", "trust_mode_code", "resources_mode_code")
+    list_filter = ("is_active", "paths_mode", "trust_mode", "resources_mode", "cta_mode")
+    search_fields = ("category__name", "category__slug", "hero_title", "answer_summary")
+    list_select_related = ("category",)
+    autocomplete_fields = ("category", "hero_image")
+    inlines = (ProductCategoryGuideItemInline,)
+    fieldsets = (
+        (
+            "Guide Identity",
+            {
+                "fields": (
+                    "category",
+                    "is_active",
+                )
+            },
+        ),
+        (
+            "Hero",
+            {
+                "fields": (
+                    "hero_eyebrow",
+                    "hero_title",
+                    "answer_summary",
+                    "hero_primary_cta_label",
+                    "hero_primary_cta_href",
+                    "hero_secondary_cta_label",
+                    "hero_secondary_cta_href",
+                    "hero_image",
+                    "hero_image_alt",
+                    "hero_note_title",
+                    "hero_note_copy",
+                    "hero_note_quote",
+                    "hero_note_attribution",
+                )
+            },
+        ),
+        (
+            "Section Content",
+            {
+                "fields": (
+                    "definition_title",
+                    "definition_copy",
+                    "contexts_title",
+                    "matrix_title",
+                    "matrix_eyebrow",
+                    "paths_title",
+                    "paths_eyebrow",
+                    "paths_mode",
+                    "trust_title",
+                    "trust_copy",
+                    "trust_mode",
+                    "faq_title",
+                    "resources_title",
+                    "resources_mode",
+                    "cta_title",
+                    "cta_copy",
+                    "cta_mode",
+                    "cta_primary_label",
+                    "cta_primary_href",
+                    "cta_secondary_label",
+                    "cta_secondary_href",
+                )
+            },
+        ),
+        ("Timestamps", {"fields": ("created_at", "updated_at")}),
+    )
+
+
+@admin.register(ProductCategoryGuideItem)
+class ProductCategoryGuideItemAdmin(TimestampReadonlyAdminMixin, admin.ModelAdmin):
+    list_display = ("title", "guide", "section_code", "item_key", "sort_order", "is_active")
+    list_filter = ("section", "is_active")
+    search_fields = ("title", "item_key", "body", "guide__category__name")
+    list_select_related = ("guide", "guide__category", "target_category", "target_resource")
+    autocomplete_fields = ("guide", "asset", "target_category", "target_resource")
 
 
 @admin.register(Product)

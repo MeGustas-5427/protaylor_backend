@@ -177,6 +177,124 @@ class ProductCategoryFaqPlacement(ChoicesMixin, IntEnum):
         }
 
 
+class ProductCategoryGuidePathMode(ChoicesMixin, IntEnum):
+    ROUTE_GUIDANCE = 1
+    NEXT_STEP_GUIDANCE = 2
+
+    @classmethod
+    def choices(cls):
+        names = {
+            cls.ROUTE_GUIDANCE: "Route guidance",
+            cls.NEXT_STEP_GUIDANCE: "Next-step guidance",
+        }
+        return [(member.value, names[member]) for member in cls]
+
+    @classmethod
+    def codes(cls):
+        return {
+            cls.ROUTE_GUIDANCE.value: "route_guidance",
+            cls.NEXT_STEP_GUIDANCE.value: "next_step_guidance",
+        }
+
+
+class ProductCategoryGuideTrustMode(ChoicesMixin, IntEnum):
+    SHARED_SITEWIDE = 1
+    CATEGORY_CURATED = 2
+    HIDDEN = 3
+
+    @classmethod
+    def choices(cls):
+        names = {
+            cls.SHARED_SITEWIDE: "Shared sitewide",
+            cls.CATEGORY_CURATED: "Category curated",
+            cls.HIDDEN: "Hidden",
+        }
+        return [(member.value, names[member]) for member in cls]
+
+    @classmethod
+    def codes(cls):
+        return {
+            cls.SHARED_SITEWIDE.value: "shared_sitewide",
+            cls.CATEGORY_CURATED.value: "category_curated",
+            cls.HIDDEN.value: "hidden",
+        }
+
+
+class ProductCategoryGuideResourcesMode(ChoicesMixin, IntEnum):
+    SHARED_DEFAULT = 1
+    CATEGORY_CURATED = 2
+    HIDDEN = 3
+
+    @classmethod
+    def choices(cls):
+        names = {
+            cls.SHARED_DEFAULT: "Shared default",
+            cls.CATEGORY_CURATED: "Category curated",
+            cls.HIDDEN: "Hidden",
+        }
+        return [(member.value, names[member]) for member in cls]
+
+    @classmethod
+    def codes(cls):
+        return {
+            cls.SHARED_DEFAULT.value: "shared_default",
+            cls.CATEGORY_CURATED.value: "category_curated",
+            cls.HIDDEN.value: "hidden",
+        }
+
+
+class ProductCategoryGuideCtaMode(ChoicesMixin, IntEnum):
+    LISTING_FIRST = 1
+    INQUIRY_FIRST = 2
+
+    @classmethod
+    def choices(cls):
+        names = {
+            cls.LISTING_FIRST: "Listing first",
+            cls.INQUIRY_FIRST: "Inquiry first",
+        }
+        return [(member.value, names[member]) for member in cls]
+
+    @classmethod
+    def codes(cls):
+        return {
+            cls.LISTING_FIRST.value: "listing_first",
+            cls.INQUIRY_FIRST.value: "inquiry_first",
+        }
+
+
+class ProductCategoryGuideItemSection(ChoicesMixin, IntEnum):
+    DEFINITION_CARD = 1
+    OPERATIONAL_CONTEXT = 2
+    DECISION_FACTOR = 3
+    PATH = 4
+    TRUST_METRIC = 5
+    RELATED_RESOURCE = 6
+
+    @classmethod
+    def choices(cls):
+        names = {
+            cls.DEFINITION_CARD: "Definition card",
+            cls.OPERATIONAL_CONTEXT: "Operational context",
+            cls.DECISION_FACTOR: "Decision factor",
+            cls.PATH: "Path",
+            cls.TRUST_METRIC: "Trust metric",
+            cls.RELATED_RESOURCE: "Related resource",
+        }
+        return [(member.value, names[member]) for member in cls]
+
+    @classmethod
+    def codes(cls):
+        return {
+            cls.DEFINITION_CARD.value: "definition_card",
+            cls.OPERATIONAL_CONTEXT.value: "operational_context",
+            cls.DECISION_FACTOR.value: "decision_factor",
+            cls.PATH.value: "path",
+            cls.TRUST_METRIC.value: "trust_metric",
+            cls.RELATED_RESOURCE.value: "related_resource",
+        }
+
+
 class ProductCategory(SeoFieldsMixin):
     name = models.CharField(_("分类名称"), max_length=255)
     parent = models.ForeignKey(
@@ -333,6 +451,410 @@ class ProductCategoryFaqItem(TimeStampedModel, ActivatableModel, OrderedModel):
 
     def __str__(self) -> str:
         return f"{self.category.name}: {self.question}"
+
+
+class ProductCategoryGuide(TimeStampedModel, ActivatableModel):
+    PathMode = ProductCategoryGuidePathMode
+    TrustMode = ProductCategoryGuideTrustMode
+    ResourcesMode = ProductCategoryGuideResourcesMode
+    CtaMode = ProductCategoryGuideCtaMode
+
+    category = models.OneToOneField(
+        ProductCategory,
+        verbose_name=_("所属分类"),
+        on_delete=models.CASCADE,
+        related_name="guide",
+        help_text="分类 guide 页的模块级配置。",
+    )
+    hero_eyebrow = models.CharField(
+        _("Hero Eyebrow"),
+        max_length=80,
+        blank=True,
+        help_text="Hero 顶部小标题，例如 Editorial Buying Guide。",
+    )
+    hero_title = models.CharField(
+        _("Hero 标题"),
+        max_length=180,
+        blank=True,
+        help_text="Guide 页主标题；为空时前端可按分类名生成默认标题。",
+    )
+    answer_summary = models.TextField(
+        _("Answer Summary"),
+        blank=True,
+        validators=[MaxLengthValidator(420)],
+        help_text="Hero 主摘要。建议 2-4 句，并控制在 420 个字符以内。",
+    )
+    hero_primary_cta_label = models.CharField(
+        _("Hero 主 CTA 文案"),
+        max_length=80,
+        blank=True,
+        help_text="为空时前端可回退到默认 listing CTA。",
+    )
+    hero_primary_cta_href = models.CharField(
+        _("Hero 主 CTA 链接"),
+        max_length=255,
+        blank=True,
+        help_text="可留空；为空时前端可回退到当前分类列表页。",
+    )
+    hero_secondary_cta_label = models.CharField(
+        _("Hero 次 CTA 文案"),
+        max_length=80,
+        blank=True,
+        help_text="为空时前端可回退到默认 inquiry CTA。",
+    )
+    hero_secondary_cta_href = models.CharField(
+        _("Hero 次 CTA 链接"),
+        max_length=255,
+        blank=True,
+        help_text="可留空；为空时前端可回退到联系或询盘页。",
+    )
+    hero_image = models.ForeignKey(
+        "core.MediaAsset",
+        verbose_name=_("Hero 配图"),
+        on_delete=models.SET_NULL,
+        db_constraint=False,
+        null=True,
+        blank=True,
+        related_name="category_guide_hero_images",
+        help_text="Guide Hero 区主图。",
+    )
+    hero_image_alt = models.CharField(
+        _("Hero 图片 Alt"),
+        max_length=160,
+        blank=True,
+        help_text="Hero 配图 alt 文案。",
+    )
+    hero_note_title = models.CharField(
+        _("Hero Note 标题"),
+        max_length=80,
+        blank=True,
+        help_text="Hero 图旁说明卡标题。",
+    )
+    hero_note_copy = models.TextField(
+        _("Hero Note 文案"),
+        blank=True,
+        validators=[MaxLengthValidator(220)],
+        help_text="Hero 图旁说明卡导语。建议控制在 220 个字符以内。",
+    )
+    hero_note_quote = models.CharField(
+        _("Hero 引语"),
+        max_length=220,
+        blank=True,
+        help_text="Hero 引语句子。",
+    )
+    hero_note_attribution = models.CharField(
+        _("Hero 引语署名"),
+        max_length=120,
+        blank=True,
+        help_text="Hero 引语来源或署名。",
+    )
+    definition_title = models.CharField(
+        _("Definition 标题"),
+        max_length=120,
+        blank=True,
+        help_text="Definition + Cards 模块标题。",
+    )
+    definition_copy = models.TextField(
+        _("Definition 文案"),
+        blank=True,
+        validators=[MaxLengthValidator(700)],
+        help_text="Definition 左侧主文案。建议 2-4 段短句，总长度控制在 700 个字符以内。",
+    )
+    contexts_title = models.CharField(
+        _("Operational Contexts 标题"),
+        max_length=120,
+        blank=True,
+        help_text="Operational Contexts 模块标题。",
+    )
+    matrix_title = models.CharField(
+        _("Matrix 标题"),
+        max_length=120,
+        blank=True,
+        help_text="Matrix 模块标题。",
+    )
+    matrix_eyebrow = models.CharField(
+        _("Matrix Eyebrow"),
+        max_length=120,
+        blank=True,
+        help_text="Matrix 模块辅助小标题。",
+    )
+    paths_title = models.CharField(
+        _("Paths 标题"),
+        max_length=120,
+        blank=True,
+        help_text="Paths 模块标题。",
+    )
+    paths_eyebrow = models.CharField(
+        _("Paths Eyebrow"),
+        max_length=120,
+        blank=True,
+        help_text="Paths 模块辅助小标题。",
+    )
+    paths_mode = models.PositiveSmallIntegerField(
+        _("Paths 模式"),
+        choices=ProductCategoryGuidePathMode.choices,
+        default=ProductCategoryGuidePathMode.ROUTE_GUIDANCE,
+        help_text="只允许 route_guidance 或 next_step_guidance 二选一。",
+    )
+    trust_title = models.CharField(
+        _("Standards / Trust 标题"),
+        max_length=120,
+        blank=True,
+        help_text="Trust/Standards 模块标题。",
+    )
+    trust_copy = models.TextField(
+        _("Standards / Trust 文案"),
+        blank=True,
+        validators=[MaxLengthValidator(280)],
+        help_text="Trust/Standards 模块导语。建议控制在 280 个字符以内。",
+    )
+    trust_mode = models.PositiveSmallIntegerField(
+        _("Standards / Trust 模式"),
+        choices=ProductCategoryGuideTrustMode.choices,
+        default=ProductCategoryGuideTrustMode.SHARED_SITEWIDE,
+        help_text="shared_sitewide、category_curated、hidden 三选一。",
+    )
+    faq_title = models.CharField(
+        _("Guide FAQ 标题"),
+        max_length=120,
+        blank=True,
+        help_text="Guide FAQ 模块标题；FAQ 条目本身仍复用 ProductCategoryFaqItem。",
+    )
+    resources_title = models.CharField(
+        _("Related Resources 标题"),
+        max_length=120,
+        blank=True,
+        help_text="Related Resources 模块标题。",
+    )
+    resources_mode = models.PositiveSmallIntegerField(
+        _("Related Resources 模式"),
+        choices=ProductCategoryGuideResourcesMode.choices,
+        default=ProductCategoryGuideResourcesMode.SHARED_DEFAULT,
+        help_text="shared_default、category_curated、hidden 三选一。",
+    )
+    cta_title = models.CharField(
+        _("Final CTA 标题"),
+        max_length=160,
+        blank=True,
+        help_text="Final CTA 标题。",
+    )
+    cta_copy = models.TextField(
+        _("Final CTA 文案"),
+        blank=True,
+        validators=[MaxLengthValidator(260)],
+        help_text="Final CTA 主文案。建议控制在 260 个字符以内。",
+    )
+    cta_mode = models.PositiveSmallIntegerField(
+        _("Final CTA 模式"),
+        choices=ProductCategoryGuideCtaMode.choices,
+        default=ProductCategoryGuideCtaMode.LISTING_FIRST,
+        help_text="listing_first 或 inquiry_first。",
+    )
+    cta_primary_label = models.CharField(
+        _("Final CTA 主按钮文案"),
+        max_length=80,
+        blank=True,
+        help_text="为空时前端可按 cta_mode 回退默认文案。",
+    )
+    cta_primary_href = models.CharField(
+        _("Final CTA 主按钮链接"),
+        max_length=255,
+        blank=True,
+        help_text="可留空；为空时前端可按 cta_mode 回退默认链接。",
+    )
+    cta_secondary_label = models.CharField(
+        _("Final CTA 次按钮文案"),
+        max_length=80,
+        blank=True,
+        help_text="为空时前端可按 cta_mode 回退默认文案。",
+    )
+    cta_secondary_href = models.CharField(
+        _("Final CTA 次按钮链接"),
+        max_length=255,
+        blank=True,
+        help_text="可留空；为空时前端可按 cta_mode 回退默认链接。",
+    )
+
+    class Meta:
+        db_table = "product_category_guide"
+        verbose_name = "分类 Guide"
+        verbose_name_plural = "分类 Guide"
+        indexes = [
+            models.Index(
+                fields=("is_active",),
+                name="idx_cat_guide_active",
+            )
+        ]
+
+    @property
+    def paths_mode_code(self) -> str:
+        return ProductCategoryGuidePathMode.code_of(self.paths_mode)
+
+    @property
+    def trust_mode_code(self) -> str:
+        return ProductCategoryGuideTrustMode.code_of(self.trust_mode)
+
+    @property
+    def resources_mode_code(self) -> str:
+        return ProductCategoryGuideResourcesMode.code_of(self.resources_mode)
+
+    @property
+    def cta_mode_code(self) -> str:
+        return ProductCategoryGuideCtaMode.code_of(self.cta_mode)
+
+    def __str__(self) -> str:
+        return f"{self.category.name}: Guide"
+
+
+class ProductCategoryGuideItem(TimeStampedModel, ActivatableModel, OrderedModel):
+    Section = ProductCategoryGuideItemSection
+
+    guide = models.ForeignKey(
+        ProductCategoryGuide,
+        verbose_name=_("所属 Guide"),
+        on_delete=models.CASCADE,
+        related_name="items",
+        help_text="分类 guide 页下的结构化条目。",
+    )
+    section = models.PositiveSmallIntegerField(
+        _("所属模块"),
+        choices=ProductCategoryGuideItemSection.choices,
+        db_index=True,
+        help_text="条目属于 definition_card、operational_context、decision_factor、path、trust_metric、related_resource 中的哪一组。",
+    )
+    item_key = models.CharField(
+        _("条目标识"),
+        max_length=80,
+        help_text="稳定业务 key，例如 best_for、not_for、cold_vs_dual_temp、entry_compact。",
+    )
+    eyebrow = models.CharField(
+        _("Eyebrow"),
+        max_length=80,
+        blank=True,
+        help_text="可选；用于 resource label 或卡片辅助小标题。",
+    )
+    title = models.CharField(
+        _("标题"),
+        max_length=160,
+        help_text="条目主标题。",
+    )
+    body = models.TextField(
+        _("正文"),
+        blank=True,
+        validators=[MaxLengthValidator(420)],
+        help_text="条目正文；建议控制在 420 个字符以内。",
+    )
+    supporting_points = models.TextField(
+        _("补充要点"),
+        blank=True,
+        validators=[MaxLengthValidator(420)],
+        help_text="多行文本，每行一个 bullet；主要用于 Paths 模块。",
+    )
+    icon = models.CharField(
+        _("图标"),
+        max_length=40,
+        blank=True,
+        help_text="Material Icon slug，例如 storefront、tune、checklist。",
+    )
+    asset = models.ForeignKey(
+        "core.MediaAsset",
+        verbose_name=_("配图"),
+        on_delete=models.SET_NULL,
+        db_constraint=False,
+        blank=True,
+        null=True,
+        related_name="category_guide_items",
+        help_text="Operational Contexts 等图文卡片可使用的配图。",
+    )
+    asset_alt = models.CharField(
+        _("图片 Alt"),
+        max_length=160,
+        blank=True,
+        help_text="配图 alt 文案。",
+    )
+    target_category = models.ForeignKey(
+        ProductCategory,
+        verbose_name=_("目标分类"),
+        on_delete=models.SET_NULL,
+        db_constraint=False,
+        blank=True,
+        null=True,
+        related_name="incoming_guide_items",
+        help_text="用于 path 或 resource 卡片跳转到某个分类页。",
+    )
+    target_resource = models.ForeignKey(
+        "content.ResourceArticle",
+        verbose_name=_("目标资源"),
+        on_delete=models.SET_NULL,
+        db_constraint=False,
+        blank=True,
+        null=True,
+        related_name="incoming_category_guide_items",
+        help_text="用于 related resources 卡片跳转到资源文章。",
+    )
+    href = models.CharField(
+        _("兜底链接"),
+        max_length=255,
+        blank=True,
+        help_text="可填写外链或兜底 href；优先级低于 target_category / target_resource。",
+    )
+    cta_label = models.CharField(
+        _("按钮文案"),
+        max_length=80,
+        blank=True,
+        help_text="当某些卡片需要显式 CTA 标签时使用。",
+    )
+
+    class Meta(OrderedModel.Meta):
+        db_table = "product_category_guide_item"
+        verbose_name = "分类 Guide 条目"
+        verbose_name_plural = "分类 Guide 条目"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("guide", "section", "sort_order"),
+                name="uniq_cat_guide_item_sort",
+            ),
+            models.UniqueConstraint(
+                fields=("guide", "section", "item_key"),
+                name="uniq_cat_guide_item_key",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("guide", "section", "is_active", "sort_order"),
+                name="idx_cat_guide_item_q",
+            )
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        if self.target_category_id and self.target_resource_id:
+            raise ValidationError(
+                {
+                    "target_category": "target_category and target_resource cannot both be set.",
+                    "target_resource": "target_category and target_resource cannot both be set.",
+                }
+            )
+
+        if self.section in (
+            ProductCategoryGuideItemSection.PATH,
+            ProductCategoryGuideItemSection.RELATED_RESOURCE,
+        ) and not (self.target_category_id or self.target_resource_id or self.href):
+            raise ValidationError(
+                {
+                    "href": (
+                        "Path and related_resource items require target_category, "
+                        "target_resource, or href."
+                    )
+                }
+            )
+
+    @property
+    def section_code(self) -> str:
+        return ProductCategoryGuideItemSection.code_of(self.section)
+
+    def __str__(self) -> str:
+        return f"{self.guide.category.name}: {self.section_code} / {self.title}"
 
 
 class ProductCategoryComparisonOverview(TimeStampedModel, ActivatableModel):

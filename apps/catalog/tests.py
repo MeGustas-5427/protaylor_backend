@@ -16,6 +16,8 @@ from apps.catalog.models import (
     ProductCategoryComparisonOverview,
     ProductCategoryComparisonRow,
     ProductCategoryFaqItem,
+    ProductCategoryGuide,
+    ProductCategoryGuideItem,
     ProductCategoryOperationalItem,
     ProductMedia,
     ProductRelation,
@@ -405,7 +407,7 @@ class CatalogApiTests(TestCase):
                     category=cls.single_child,
                     section=ProductCategoryOperationalItem.Section.BUYER_REVIEW_FOCUS,
                     title="Cooling and Ventilation Limits",
-                    body="Check ambient heat, side clearance, and recovery expectations before treating a small bowl machine as all-day service equipment.",
+                    body="Check ambient heat, side clearance, and recovery expectations before treating a small bowl machine as all-day equipment.",
                     icon="bolt",
                     sort_order=10,
                 ),
@@ -1470,6 +1472,196 @@ class ImportCategoryFaqsCommandTests(TestCase):
         self.child_category.refresh_from_db()
         self.assertEqual(self.child_category.sourcing_faq_title, "Gelato Sourcing FAQ")
         self.assertEqual(self.parent_category.sourcing_faq_title, "")
+
+
+class CategoryGuideApiTests(TestCase):
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.category = ProductCategory.objects.create(
+            name="Ice Cream Machine",
+            slug="ice-cream-machine",
+            url_path="/products/ice-cream-machine/",
+            h1="Ice Cream Machine",
+            summary="Ice Cream Machine summary",
+            lead_text="Ice Cream Machine lead text",
+            seo_title="Ice Cream Machine | PRO-TAYLOR",
+            meta_description="Ice Cream Machine meta description",
+            primary_query="ice cream machine",
+            status=ProductCategory.Status.PUBLISHED,
+            index_mode=ProductCategory.IndexMode.INDEX,
+        )
+        cls.category_without_guide = ProductCategory.objects.create(
+            name="Soft Ice Cream Machine",
+            slug="soft-ice-cream-machine",
+            url_path="/products/soft-ice-cream-machine/",
+            h1="Soft Ice Cream Machine",
+            seo_title="Soft Ice Cream Machine | PRO-TAYLOR",
+            meta_description="Soft Ice Cream Machine meta description",
+            primary_query="soft ice cream machine",
+            status=ProductCategory.Status.PUBLISHED,
+            index_mode=ProductCategory.IndexMode.INDEX,
+        )
+        image = MediaAsset.objects.create(
+            title="Ice Cream Machine Guide Hero",
+            asset_kind=MediaAsset.AssetKind.IMAGE,
+            file_url="https://cdn.example.com/protaylor/ice-cream-machine-guide.jpg",
+            alt_text="Ice cream machine guide hero",
+            mime_type="image/jpeg",
+        )
+        guide = ProductCategoryGuide.objects.create(
+            category=cls.category,
+            hero_eyebrow="Editorial Buying Guide",
+            hero_title="A Professional Guide to Ice Cream Machine",
+            answer_summary="Use this guide to split production route decisions before comparing individual machines.",
+            hero_primary_cta_label="View Models in This Category",
+            hero_primary_cta_href="/products/ice-cream-machine/",
+            hero_secondary_cta_label="Request Quote",
+            hero_secondary_cta_href="/contact/",
+            hero_image=image,
+            hero_image_alt="Ice cream machine guide hero override",
+            hero_note_title="Category Review",
+            hero_note_copy="Start with operating fit before comparing individual models.",
+            hero_note_quote='"Start with route fit before model fit."',
+            hero_note_attribution="PRO-TAYLOR Category Review",
+            definition_title="Defining Your Review Scope",
+            definition_copy="First paragraph for route framing.\n\nSecond paragraph for shortlist logic.",
+            contexts_title="Operational Contexts",
+            matrix_title="Buyer Review Focus",
+            matrix_eyebrow="Factors That Determine Shortlist Quality",
+            paths_title="Recommended Paths",
+            paths_eyebrow="Tailored for your range",
+            paths_mode=ProductCategoryGuide.PathMode.ROUTE_GUIDANCE,
+            trust_title="Global Engineering Standards",
+            trust_copy="Confirm voltage, compliance, packing, and service support before order lock.",
+            trust_mode=ProductCategoryGuide.TrustMode.CATEGORY_CURATED,
+            faq_title="Category FAQ",
+            resources_title="Related Resources",
+            resources_mode=ProductCategoryGuide.ResourcesMode.CATEGORY_CURATED,
+            cta_title="Ready to Configure Your System?",
+            cta_copy="Browse models or request technical confirmation with your target route.",
+            cta_mode=ProductCategoryGuide.CtaMode.LISTING_FIRST,
+            cta_primary_label="Browse Current Models",
+            cta_primary_href="/products/ice-cream-machine/",
+            cta_secondary_label="Request Quote",
+            cta_secondary_href="/contact/",
+        )
+        ProductCategoryGuideItem.objects.bulk_create(
+            [
+                ProductCategoryGuideItem(
+                    guide=guide,
+                    section=ProductCategoryGuideItem.Section.DEFINITION_CARD,
+                    item_key="best_for",
+                    eyebrow="best_for",
+                    title="Route-first buyers",
+                    body="Best for teams comparing soft serve, batch, and roll ice cream operating routes.",
+                    icon="storefront",
+                    sort_order=10,
+                ),
+                ProductCategoryGuideItem(
+                    guide=guide,
+                    section=ProductCategoryGuideItem.Section.OPERATIONAL_CONTEXT,
+                    item_key="dessert_counter",
+                    title="Dessert Counter Service",
+                    body="Use when counter rhythm and visible service format shape the machine choice.",
+                    asset=image,
+                    asset_alt="Dessert counter guide context",
+                    sort_order=10,
+                ),
+                ProductCategoryGuideItem(
+                    guide=guide,
+                    section=ProductCategoryGuideItem.Section.DECISION_FACTOR,
+                    item_key="service_format",
+                    title="Service Format",
+                    body="Decide direct-draw, batch production, or made-to-order pan service first.",
+                    icon="tune",
+                    sort_order=10,
+                ),
+                ProductCategoryGuideItem(
+                    guide=guide,
+                    section=ProductCategoryGuideItem.Section.PATH,
+                    item_key="soft_serve_route",
+                    eyebrow="01",
+                    title="Start with soft serve",
+                    body="Choose this path when continuous direct-draw service is the main need.",
+                    supporting_points="Open the soft serve route\nCompare model cards\nConfirm quote requirements",
+                    href="/products/soft-ice-cream-machine/",
+                    sort_order=10,
+                ),
+                ProductCategoryGuideItem(
+                    guide=guide,
+                    section=ProductCategoryGuideItem.Section.TRUST_METRIC,
+                    item_key="ce_compliance",
+                    eyebrow="CE",
+                    title="Compliance-ready exports",
+                    sort_order=10,
+                ),
+                ProductCategoryGuideItem(
+                    guide=guide,
+                    section=ProductCategoryGuideItem.Section.RELATED_RESOURCE,
+                    item_key="soft_serve_buying_guide",
+                    eyebrow="Technical Guide",
+                    title="Soft Serve Buying Guide",
+                    href="/resources/soft-serve-buying-guide/",
+                    sort_order=10,
+                ),
+            ]
+        )
+        ProductCategoryFaqItem.objects.bulk_create(
+            [
+                ProductCategoryFaqItem(
+                    category=cls.category,
+                    placement=ProductCategoryFaqItem.Placement.PLP_SOURCING,
+                    question="PLP FAQ should not appear in guide.",
+                    answer="This item belongs to the product listing page.",
+                    sort_order=10,
+                ),
+                ProductCategoryFaqItem(
+                    category=cls.category,
+                    placement=ProductCategoryFaqItem.Placement.GUIDE_FAQ,
+                    question="Why open the guide before comparing models?",
+                    answer="The guide separates route fit before model-level output and configuration review.",
+                    sort_order=10,
+                ),
+            ]
+        )
+
+    def setUp(self) -> None:
+        self.client = build_api_client()
+
+    def test_category_guide_endpoint_returns_structured_guide_contract(self) -> None:
+        response = self.client.get("/api/v1/catalog/categories/ice-cream-machine/guide")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        guide = payload["guide"]
+        self.assertEqual(payload["slug"], "ice-cream-machine")
+        self.assertEqual(guide["hero_title"], "A Professional Guide to Ice Cream Machine")
+        self.assertEqual(guide["hero_image_url"], "https://cdn.example.com/protaylor/ice-cream-machine-guide.jpg")
+        self.assertEqual(
+            guide["definition_paragraphs"],
+            ["First paragraph for route framing.", "Second paragraph for shortlist logic."],
+        )
+        self.assertEqual(guide["definition_cards"][0]["role_code"], "best_for")
+        self.assertEqual(guide["contexts"][0]["image_alt"], "Dessert counter guide context")
+        self.assertEqual(guide["decision_factors"][0]["item_key"], "service_format")
+        self.assertEqual(guide["paths_mode_code"], "route_guidance")
+        self.assertEqual(
+            guide["paths"][0]["bullets"],
+            ["Open the soft serve route", "Compare model cards", "Confirm quote requirements"],
+        )
+        self.assertEqual(guide["standards_mode_code"], "category_curated")
+        self.assertEqual(guide["standards_stats"][0]["value"], "CE")
+        self.assertEqual(
+            [item["question"] for item in guide["faqs"]],
+            ["Why open the guide before comparing models?"],
+        )
+        self.assertEqual(guide["resources"][0]["label"], "Technical Guide")
+        self.assertEqual(guide["cta_mode_code"], "listing_first")
+
+    def test_category_guide_endpoint_returns_404_without_active_top_level_guide(self) -> None:
+        response = self.client.get("/api/v1/catalog/categories/soft-ice-cream-machine/guide")
+
+        self.assertEqual(response.status_code, 404)
 
 
 class CategoryComparisonOverviewApiTests(TestCase):

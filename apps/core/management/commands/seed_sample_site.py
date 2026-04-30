@@ -22,7 +22,6 @@ from apps.content.models import (
     HomeConfig,
     HomeFeaturedCard,
     HomeProofItem,
-    HomeValuePoint,
     ResourceArticle,
     SolutionPage,
 )
@@ -324,8 +323,6 @@ class Command(BaseCommand):
                 "customization_support": "Branding, voltage matching, and market-specific documentation can be aligned before order confirmation.",
                 "packing_shipping": "Export packing, carton or wood support, and shipment coordination are available by order plan.",
                 "after_sales_support": "Spare parts continuity, troubleshooting guidance, and service coordination are included in the support flow.",
-                "quote_cta_title": "Request a Quote for ICM-T838",
-                "quote_cta_body": "Share your market, voltage, target servings, and whether you need OEM branding.",
                 "seo_title": "ICM-T838 Twin Twist Soft Serve Machine | PRO-TAYLOR",
                 "meta_description": "Review the ICM-T838 twin twist soft serve machine for dessert shop, distributor, and OEM sourcing.",
                 "primary_query": "ICM-T838 twin twist soft serve machine",
@@ -441,18 +438,9 @@ class Command(BaseCommand):
                 "hero_secondary_cta_label": "Contact PRO-TAYLOR",
                 "hero_secondary_cta_href": "/company/contact/",
                 "trust_ribbon": "Factory production | Export support | OEM coordination | After-sales continuity",
-                "buyer_path_heading": "Choose the Right Buying Path",
-                "category_section_heading": "Core Equipment Categories",
-                "value_section_heading": "Why Buyers Choose PRO-TAYLOR",
                 "featured_content_heading": "Recommended Starting Resources",
-                "proof_section_heading": "Proof and Trust Signals",
-                "faq_section_heading": "Frequently Asked Questions",
-                "final_cta_title": "Start Your Shortlist with Real Project Inputs",
-                "final_cta_body": "Tell us your market, voltage, menu type, and target output so we can recommend the right machine path.",
-                "final_cta_primary_label": "Request a Quote",
-                "final_cta_primary_href": "/company/contact/",
-                "final_cta_secondary_label": "See Company Profile",
-                "final_cta_secondary_href": company_about.url_path,
+                "hero_image": hero_image,
+                "value_section_image": product_image,
                 "seo_title": "Commercial Ice Cream Machine Manufacturer for Wholesale, OEM, and Dessert Business | PRO-TAYLOR",
                 "meta_description": "PRO-TAYLOR manufactures commercial soft serve, ice lolly, slush, and frozen dessert equipment for distributors, OEM programs, and dessert businesses worldwide.",
                 "primary_query": "commercial ice cream machine manufacturer",
@@ -492,17 +480,6 @@ class Command(BaseCommand):
                 },
             )
 
-        for eyebrow, title, body, sort_order in [
-            ("Factory-led supply", "Manufacturing capability first", "The site should prove who builds the machine and how delivery risk is controlled.", 10),
-            ("Export continuity", "Documentation and coordination", "Export packing, model confirmation, and after-sales planning are part of the sourcing workflow.", 20),
-            ("Buyer-fit selection", "Choose by real use case", "Machines are organized by buyer intent, menu fit, and operating environment.", 30),
-        ]:
-            HomeValuePoint.objects.update_or_create(
-                home=home,
-                title=title,
-                defaults={"eyebrow": eyebrow, "body": body, "sort_order": sort_order},
-            )
-
         HomeFeaturedCard.objects.update_or_create(
             home=home,
             title=resource.title,
@@ -522,7 +499,6 @@ class Command(BaseCommand):
                 "evidence": "Manufacturing base in Jiangmen with export-oriented coordination and after-sales continuity.",
                 "source_name": "PRO-TAYLOR",
                 "source_role": "Manufacturer",
-                "source_company": "PRO-TAYLOR",
                 "href": company_about.url_path,
                 "asset": hero_image,
                 "sort_order": 10,

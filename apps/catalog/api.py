@@ -9,12 +9,14 @@ from apps.catalog.schemas import (
     CategoryPathSchema,
     CategoryProductListQuerySchema,
     ProductCategoryDetailSchema,
+    ProductCategoryGuideResponseSchema,
     ProductCategoryListingResponseSchema,
     ProductDetailSchema,
     ProductPathSchema,
 )
 from apps.catalog.services import (
     get_category_detail,
+    get_category_guide,
     get_category_product_listing,
     get_product_detail,
     list_category_overview_cards,
@@ -50,6 +52,14 @@ def get_category(request: Any, slug: str) -> ProductCategoryDetailSchema:
     # 这样的固定片段被动态 slug 路由误吞掉。
     del request
     return get_category_detail(slug)
+
+
+@router.get("/categories/{slug}/guide", response=ProductCategoryGuideResponseSchema)
+def get_category_guide_page(request: Any, slug: str) -> ProductCategoryGuideResponseSchema:
+    # Guide 页是分类级教育内容，和 PLP 产品网格分开读取。
+    # 缺少已审核 guide 数据时由 service 返回 404，避免前端临时拼接内容。
+    del request
+    return get_category_guide(slug)
 
 
 @router.get("/categories/{slug}/products", response=ProductCategoryListingResponseSchema)

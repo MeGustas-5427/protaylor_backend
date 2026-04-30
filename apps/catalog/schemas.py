@@ -81,6 +81,143 @@ class CategoryFaqItemSchema(Schema):
     sort_order: int
 
 
+class CategoryGuideDefinitionCardSchema(Schema):
+    """Guide 页 Definition + Cards 模块卡片。"""
+
+    id: int
+    item_key: str
+    role_code: str
+    title: str
+    body: str
+    icon: str
+    sort_order: int
+
+
+class CategoryGuideContextSchema(Schema):
+    """Guide 页 Operational Contexts 模块卡片。"""
+
+    id: int
+    item_key: str
+    title: str
+    body: str
+    image_url: str
+    image_alt: str
+    sort_order: int
+
+
+class CategoryGuideDecisionFactorSchema(Schema):
+    """Guide 页 Matrix / Buyer Review Focus 模块卡片。"""
+
+    id: int
+    item_key: str
+    title: str
+    body: str
+    icon: str
+    sort_order: int
+
+
+class CategoryGuidePathItemSchema(Schema):
+    """Guide 页 Recommended Paths 模块条目。"""
+
+    id: int
+    item_key: str
+    step: str
+    title: str
+    body: str
+    bullets: list[str]
+    href: str
+    cta_label: str
+    sort_order: int
+
+
+class CategoryGuideTrustMetricSchema(Schema):
+    """Guide 页 Standards / Trust 模块指标。"""
+
+    id: int
+    item_key: str
+    value: str
+    label: str
+    sort_order: int
+
+
+class CategoryGuideResourceSchema(Schema):
+    """Guide 页 Related Resources 模块链接。"""
+
+    id: int
+    item_key: str
+    label: str
+    title: str
+    href: str
+    cta_label: str
+    sort_order: int
+
+
+class CategoryGuideContentSchema(Schema):
+    """
+    `/products/[categorySlug]/guide` 页面专用内容契约。
+
+    字段命名按 Guide SOP 模块展开，不复用 PLP 列表页 payload，也不暴露
+    `ProductCategoryGuideItem.section` 的整数实现细节。
+    """
+
+    id: int
+    hero_eyebrow: str
+    hero_title: str
+    answer_summary: str
+    hero_primary_cta_label: str
+    hero_primary_cta_href: str
+    hero_secondary_cta_label: str
+    hero_secondary_cta_href: str
+    hero_image_url: str
+    hero_image_alt: str
+    hero_note_title: str
+    hero_note_copy: str
+    hero_note_quote: str
+    hero_note_attribution: str
+    definition_title: str
+    definition_copy: str
+    definition_paragraphs: list[str]
+    definition_cards: list[CategoryGuideDefinitionCardSchema]
+    contexts_title: str
+    contexts: list[CategoryGuideContextSchema]
+    matrix_title: str
+    matrix_eyebrow: str
+    decision_factors: list[CategoryGuideDecisionFactorSchema]
+    paths_title: str
+    paths_eyebrow: str
+    paths_mode_code: str
+    paths: list[CategoryGuidePathItemSchema]
+    standards_title: str
+    standards_copy: str
+    standards_mode_code: str
+    standards_stats: list[CategoryGuideTrustMetricSchema]
+    faq_title: str
+    faqs: list[CategoryFaqItemSchema]
+    resources_title: str
+    resources_mode_code: str
+    resources: list[CategoryGuideResourceSchema]
+    cta_title: str
+    cta_copy: str
+    cta_mode_code: str
+    cta_primary_label: str
+    cta_primary_href: str
+    cta_secondary_label: str
+    cta_secondary_href: str
+
+
+class ProductCategoryGuideResponseSchema(Schema):
+    """分类 Guide 页响应契约。"""
+
+    id: int
+    name: str
+    slug: str
+    url_path: str
+    h1: str
+    seo_title: str
+    meta_description: str
+    guide: CategoryGuideContentSchema
+
+
 class CategoryComparisonSubjectSchema(Schema):
     """分类列表页 Comparison Overview 的列定义。"""
 

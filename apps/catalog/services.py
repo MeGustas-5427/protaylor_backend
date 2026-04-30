@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Iterable
 
 from django.contrib.contenttypes.models import ContentType
@@ -12,6 +13,8 @@ from apps.catalog.models import (
     ProductCategoryComparisonOverview,
     ProductCategoryComparisonRow,
     ProductCategoryFaqItem,
+    ProductCategoryGuide,
+    ProductCategoryGuideItem,
     ProductCategoryOperationalItem,
     ProductDownload,
     ProductFeature,
@@ -30,12 +33,20 @@ from apps.catalog.schemas import (
     CategoryComparisonRowSchema,
     CategoryComparisonSubjectSchema,
     CategoryFaqItemSchema,
+    CategoryGuideContentSchema,
+    CategoryGuideContextSchema,
+    CategoryGuideDecisionFactorSchema,
+    CategoryGuideDefinitionCardSchema,
+    CategoryGuidePathItemSchema,
+    CategoryGuideResourceSchema,
+    CategoryGuideTrustMetricSchema,
     CategoryOperationalItemSchema,
     CategoryOverviewCardSchema,
     CategoryPathSchema,
     CatalogPaginationSchema,
     ProductCardMetricSchema,
     ProductCategoryDetailSchema,
+    ProductCategoryGuideResponseSchema,
     ProductCategoryListingResponseSchema,
     ProductDetailSchema,
     ProductDownloadSchema,
@@ -138,6 +149,184 @@ def _serialize_category_faq_item(item: ProductCategoryFaqItem) -> CategoryFaqIte
         question=item.question,
         answer=item.answer,
         sort_order=item.sort_order,
+    )
+
+
+def _split_paragraphs(value: str) -> list[str]:
+    return [paragraph.strip() for paragraph in re.split(r"\n\s*\n", value or "") if paragraph.strip()]
+
+
+def _split_lines(value: str) -> list[str]:
+    return [line.strip() for line in (value or "").splitlines() if line.strip()]
+
+
+def _resolve_guide_item_href(item: ProductCategoryGuideItem) -> str:
+    if item.target_category_id and item.target_category:
+        return item.target_category.url_path
+    if item.target_resource_id and item.target_resource:
+        return item.target_resource.url_path
+    return item.href or ""
+
+
+def _serialize_guide_definition_card(item: ProductCategoryGuideItem) -> CategoryGuideDefinitionCardSchema:
+    return CategoryGuideDefinitionCardSchema(
+        id=item.id,
+        item_key=item.item_key,
+        role_code=item.eyebrow or item.item_key,
+        title=item.title,
+        body=item.body or "",
+        icon=item.icon or "",
+        sort_order=item.sort_order,
+    )
+
+
+def _serialize_guide_context(item: ProductCategoryGuideItem) -> CategoryGuideContextSchema:
+    image_url = item.asset.file_url if item.asset_id and item.asset else ""
+    image_alt = item.asset_alt or (item.asset.alt_text if item.asset_id and item.asset else "") or item.title
+    return CategoryGuideContextSchema(
+        id=item.id,
+        item_key=item.item_key,
+        title=item.title,
+        body=item.body or "",
+        image_url=image_url,
+        image_alt=image_alt,
+        sort_order=item.sort_order,
+    )
+
+
+def _serialize_guide_decision_factor(item: ProductCategoryGuideItem) -> CategoryGuideDecisionFactorSchema:
+    return CategoryGuideDecisionFactorSchema(
+        id=item.id,
+        item_key=item.item_key,
+        title=item.title,
+        body=item.body or "",
+        icon=item.icon or "",
+        sort_order=item.sort_order,
+    )
+
+
+def _serialize_guide_path_item(item: ProductCategoryGuideItem) -> CategoryGuidePathItemSchema:
+    return CategoryGuidePathItemSchema(
+        id=item.id,
+        item_key=item.item_key,
+        step=item.eyebrow or "",
+        title=item.title,
+        body=item.body or "",
+        bullets=_split_lines(item.supporting_points),
+        href=_resolve_guide_item_href(item),
+        cta_label=item.cta_label or "",
+        sort_order=item.sort_order,
+    )
+
+
+def _serialize_guide_trust_metric(item: ProductCategoryGuideItem) -> CategoryGuideTrustMetricSchema:
+    return CategoryGuideTrustMetricSchema(
+        id=item.id,
+        item_key=item.item_key,
+        value=item.eyebrow or "",
+        label=item.title,
+        sort_order=item.sort_order,
+    )
+
+
+def _serialize_guide_resource(item: ProductCategoryGuideItem) -> CategoryGuideResourceSchema:
+    return CategoryGuideResourceSchema(
+        id=item.id,
+        item_key=item.item_key,
+        label=item.eyebrow or "",
+        title=item.title,
+        href=_resolve_guide_item_href(item),
+        cta_label=item.cta_label or "",
+        sort_order=item.sort_order,
+    )
+
+
+def _load_category_guide_faqs(category: ProductCategory) -> list[CategoryFaqItemSchema]:
+    items = getattr(category, "guide_faq_items", None)
+    if items is None:
+        items = list(
+            category.sourcing_faq_items.filter(
+                is_active=True,
+                placement=ProductCategoryFaqItem.Placement.GUIDE_FAQ,
+            )
+            .only("id", "category_id", "placement", "question", "answer", "sort_order", "is_active")
+            .order_by("sort_order", "id")
+        )
+    return [_serialize_category_faq_item(item) for item in items]
+
+
+def _serialize_category_guide_content(guide: ProductCategoryGuide) -> CategoryGuideContentSchema:
+    section_items: dict[int, list[ProductCategoryGuideItem]] = {}
+    for item in getattr(guide, "active_items", []):
+        section_items.setdefault(item.section, []).append(item)
+
+    hero_image_url = guide.hero_image.file_url if guide.hero_image_id and guide.hero_image else ""
+    hero_image_alt = guide.hero_image_alt or (
+        guide.hero_image.alt_text if guide.hero_image_id and guide.hero_image else ""
+    )
+
+    return CategoryGuideContentSchema(
+        id=guide.id,
+        hero_eyebrow=guide.hero_eyebrow or "",
+        hero_title=guide.hero_title or guide.category.name,
+        answer_summary=guide.answer_summary or "",
+        hero_primary_cta_label=guide.hero_primary_cta_label or "",
+        hero_primary_cta_href=guide.hero_primary_cta_href or "",
+        hero_secondary_cta_label=guide.hero_secondary_cta_label or "",
+        hero_secondary_cta_href=guide.hero_secondary_cta_href or "",
+        hero_image_url=hero_image_url,
+        hero_image_alt=hero_image_alt or guide.category.name,
+        hero_note_title=guide.hero_note_title or "",
+        hero_note_copy=guide.hero_note_copy or "",
+        hero_note_quote=guide.hero_note_quote or "",
+        hero_note_attribution=guide.hero_note_attribution or "",
+        definition_title=guide.definition_title or "",
+        definition_copy=guide.definition_copy or "",
+        definition_paragraphs=_split_paragraphs(guide.definition_copy),
+        definition_cards=[
+            _serialize_guide_definition_card(item)
+            for item in section_items.get(ProductCategoryGuideItem.Section.DEFINITION_CARD, [])
+        ],
+        contexts_title=guide.contexts_title or "",
+        contexts=[
+            _serialize_guide_context(item)
+            for item in section_items.get(ProductCategoryGuideItem.Section.OPERATIONAL_CONTEXT, [])
+        ],
+        matrix_title=guide.matrix_title or "",
+        matrix_eyebrow=guide.matrix_eyebrow or "",
+        decision_factors=[
+            _serialize_guide_decision_factor(item)
+            for item in section_items.get(ProductCategoryGuideItem.Section.DECISION_FACTOR, [])
+        ],
+        paths_title=guide.paths_title or "",
+        paths_eyebrow=guide.paths_eyebrow or "",
+        paths_mode_code=guide.paths_mode_code,
+        paths=[
+            _serialize_guide_path_item(item)
+            for item in section_items.get(ProductCategoryGuideItem.Section.PATH, [])
+        ],
+        standards_title=guide.trust_title or "",
+        standards_copy=guide.trust_copy or "",
+        standards_mode_code=guide.trust_mode_code,
+        standards_stats=[
+            _serialize_guide_trust_metric(item)
+            for item in section_items.get(ProductCategoryGuideItem.Section.TRUST_METRIC, [])
+        ],
+        faq_title=guide.faq_title or "",
+        faqs=_load_category_guide_faqs(guide.category),
+        resources_title=guide.resources_title or "",
+        resources_mode_code=guide.resources_mode_code,
+        resources=[
+            _serialize_guide_resource(item)
+            for item in section_items.get(ProductCategoryGuideItem.Section.RELATED_RESOURCE, [])
+        ],
+        cta_title=guide.cta_title or "",
+        cta_copy=guide.cta_copy or "",
+        cta_mode_code=guide.cta_mode_code,
+        cta_primary_label=guide.cta_primary_label or "",
+        cta_primary_href=guide.cta_primary_href or "",
+        cta_secondary_label=guide.cta_secondary_label or "",
+        cta_secondary_href=guide.cta_secondary_href or "",
     )
 
 
@@ -577,6 +766,57 @@ def get_category_detail(slug: str) -> ProductCategoryDetailSchema:
         selection_guide=category.selection_guide or "",
         is_core_category=category.is_core_category,
         products=[serialize_product_summary(product) for product in products],
+    )
+
+
+def get_category_guide(slug: str) -> ProductCategoryGuideResponseSchema:
+    """
+    构建顶级分类 Guide 页响应契约。
+
+    Guide 是独立教育页，不从 PLP 列表 payload 临时拼装；缺少已启用
+    Guide 数据时直接返回 404，避免前端静默发布未审核的 fallback 内容。
+    """
+
+    guide_item_queryset = (
+        ProductCategoryGuideItem.objects.filter(is_active=True)
+        .select_related("asset", "target_category", "target_resource")
+        .order_by("section", "sort_order", "id")
+    )
+    guide_faq_queryset = (
+        ProductCategoryFaqItem.objects.filter(
+            is_active=True,
+            placement=ProductCategoryFaqItem.Placement.GUIDE_FAQ,
+        )
+        .only("id", "category_id", "placement", "question", "answer", "sort_order", "is_active")
+        .order_by("sort_order", "id")
+    )
+    guide = (
+        ProductCategoryGuide.objects.filter(
+            is_active=True,
+            category__slug=slug,
+            category__status=ProductCategory.Status.PUBLISHED,
+            category__parent__isnull=True,
+        )
+        .select_related("category", "hero_image")
+        .prefetch_related(
+            Prefetch("items", queryset=guide_item_queryset, to_attr="active_items"),
+            Prefetch("category__sourcing_faq_items", queryset=guide_faq_queryset, to_attr="guide_faq_items"),
+        )
+        .first()
+    )
+    if not guide:
+        raise HttpError(404, "Product category guide not found.")
+
+    category = guide.category
+    return ProductCategoryGuideResponseSchema(
+        id=category.id,
+        name=category.name,
+        slug=category.slug,
+        url_path=category.url_path,
+        h1=category.h1,
+        seo_title=category.seo_title,
+        meta_description=category.meta_description,
+        guide=_serialize_category_guide_content(guide),
     )
 
 

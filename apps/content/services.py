@@ -9,7 +9,6 @@ from apps.content.schemas import (
     HomeConfigSchema,
     HomeFeaturedCardSchema,
     HomeProofItemSchema,
-    HomeValuePointSchema,
 )
 from common.presenters import serialize_asset, serialize_category_card, serialize_faqs_for
 
@@ -17,7 +16,7 @@ from common.presenters import serialize_asset, serialize_category_card, serializ
 def get_home_config() -> HomeConfigSchema:
     home = (
         HomeConfig.objects.filter(status=HomeConfig.Status.PUBLISHED, is_active=True)
-        .prefetch_related("buyer_paths", "value_points", "featured_cards__asset", "proof_items__asset")
+        .prefetch_related("buyer_paths", "featured_cards__asset", "proof_items__asset")
         .order_by("-updated_at")
         .first()
     )
@@ -44,18 +43,7 @@ def get_home_config() -> HomeConfigSchema:
         hero_secondary_cta_label=home.hero_secondary_cta_label or "",
         hero_secondary_cta_href=home.hero_secondary_cta_href or "",
         trust_ribbon=home.trust_ribbon or "",
-        buyer_path_heading=home.buyer_path_heading or "",
-        category_section_heading=home.category_section_heading or "",
-        value_section_heading=home.value_section_heading or "",
         featured_content_heading=home.featured_content_heading or "",
-        proof_section_heading=home.proof_section_heading or "",
-        faq_section_heading=home.faq_section_heading or "",
-        final_cta_title=home.final_cta_title or "",
-        final_cta_body=home.final_cta_body or "",
-        final_cta_primary_label=home.final_cta_primary_label or "",
-        final_cta_primary_href=home.final_cta_primary_href or "",
-        final_cta_secondary_label=home.final_cta_secondary_label or "",
-        final_cta_secondary_href=home.final_cta_secondary_href or "",
         buyer_paths=[
             HomeBuyerPathSchema(
                 id=item.id,
@@ -68,15 +56,6 @@ def get_home_config() -> HomeConfigSchema:
             for item in home.buyer_paths.all().order_by("sort_order", "id")
         ],
         core_categories=[serialize_category_card(category) for category in categories],
-        value_points=[
-            HomeValuePointSchema(
-                id=item.id,
-                eyebrow=item.eyebrow or "",
-                title=item.title,
-                body=item.body,
-            )
-            for item in home.value_points.all().order_by("sort_order", "id")
-        ],
         featured_cards=[
             HomeFeaturedCardSchema(
                 id=item.id,
@@ -96,7 +75,6 @@ def get_home_config() -> HomeConfigSchema:
                 evidence=item.evidence,
                 source_name=item.source_name or "",
                 source_role=item.source_role or "",
-                source_company=item.source_company or "",
                 href=item.href or "",
                 asset=serialize_asset(item.asset),
             )
