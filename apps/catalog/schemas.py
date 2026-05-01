@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from ninja import Schema
 
 from common.api_schemas import (
@@ -320,6 +322,14 @@ class CategoryPathSchema(Schema):
 
     slug: str
     url_path: str
+
+
+class CategoryGuidePathSchema(Schema):
+    """前端 sitemap 收录 Guide 页所需的最小路径信息。"""
+
+    slug: str
+    url_path: str
+    last_modified: datetime
 
 
 class CategoryOverviewCardSchema(Schema):

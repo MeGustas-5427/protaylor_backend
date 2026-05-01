@@ -1501,6 +1501,29 @@ class CategoryGuideApiTests(TestCase):
             status=ProductCategory.Status.PUBLISHED,
             index_mode=ProductCategory.IndexMode.INDEX,
         )
+        cls.child_category_with_guide = ProductCategory.objects.create(
+            name="Gelato Batch Freezer",
+            slug="gelato-batch-freezer",
+            url_path="/products/gelato-batch-freezer/",
+            h1="Gelato Batch Freezer",
+            seo_title="Gelato Batch Freezer | PRO-TAYLOR",
+            meta_description="Gelato Batch Freezer meta description",
+            primary_query="gelato batch freezer",
+            status=ProductCategory.Status.PUBLISHED,
+            index_mode=ProductCategory.IndexMode.INDEX,
+            parent=cls.category,
+        )
+        cls.inactive_guide_category = ProductCategory.objects.create(
+            name="Blast Freezer",
+            slug="blast-freezer",
+            url_path="/products/blast-freezer/",
+            h1="Blast Freezer",
+            seo_title="Blast Freezer | PRO-TAYLOR",
+            meta_description="Blast Freezer meta description",
+            primary_query="blast freezer",
+            status=ProductCategory.Status.PUBLISHED,
+            index_mode=ProductCategory.IndexMode.INDEX,
+        )
         image = MediaAsset.objects.create(
             title="Ice Cream Machine Guide Hero",
             asset_kind=MediaAsset.AssetKind.IMAGE,
@@ -1544,6 +1567,15 @@ class CategoryGuideApiTests(TestCase):
             cta_primary_href="/products/ice-cream-machine/",
             cta_secondary_label="Request Quote",
             cta_secondary_href="/contact/",
+        )
+        ProductCategoryGuide.objects.create(
+            category=cls.child_category_with_guide,
+            hero_title="Child guides should not be listed for sitemap.",
+        )
+        ProductCategoryGuide.objects.create(
+            category=cls.inactive_guide_category,
+            is_active=False,
+            hero_title="Inactive guides should not be listed for sitemap.",
         )
         ProductCategoryGuideItem.objects.bulk_create(
             [
@@ -1662,6 +1694,15 @@ class CategoryGuideApiTests(TestCase):
         response = self.client.get("/api/v1/catalog/categories/soft-ice-cream-machine/guide")
 
         self.assertEqual(response.status_code, 404)
+
+    def test_category_guide_paths_endpoint_returns_only_active_top_level_guides(self) -> None:
+        response = self.client.get("/api/v1/catalog/categories/guide/paths")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([item["slug"] for item in payload], ["ice-cream-machine"])
+        self.assertEqual(payload[0]["url_path"], "/products/ice-cream-machine/")
+        self.assertIn("last_modified", payload[0])
 
 
 class CategoryComparisonOverviewApiTests(TestCase):

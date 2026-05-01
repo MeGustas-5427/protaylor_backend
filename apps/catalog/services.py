@@ -37,6 +37,7 @@ from apps.catalog.schemas import (
     CategoryGuideContextSchema,
     CategoryGuideDecisionFactorSchema,
     CategoryGuideDefinitionCardSchema,
+    CategoryGuidePathSchema,
     CategoryGuidePathItemSchema,
     CategoryGuideResourceSchema,
     CategoryGuideTrustMetricSchema,
@@ -1013,6 +1014,35 @@ def list_category_paths() -> list[CategoryPathSchema]:
     )
 
     return [CategoryPathSchema(slug=category.slug, url_path=category.url_path) for category in queryset]
+
+
+def list_category_guide_paths() -> list[CategoryGuidePathSchema]:
+    """
+    返回 sitemap 可收录的 Guide 页路径。
+
+    这里故意不复用 `list_category_paths()` 后让前端逐个探测 guide 是否存在：
+    sitemap 只应该收录已经启用、所属分类已发布、且属于顶级分类的真实 Guide 页。
+    """
+
+    queryset = (
+        ProductCategoryGuide.objects.filter(
+            is_active=True,
+            category__status=ProductCategory.Status.PUBLISHED,
+            category__parent__isnull=True,
+        )
+        .select_related("category")
+        .only("updated_at", "category__slug", "category__url_path")
+        .order_by("category__name")
+    )
+
+    return [
+        CategoryGuidePathSchema(
+            slug=guide.category.slug,
+            url_path=guide.category.url_path,
+            last_modified=guide.updated_at,
+        )
+        for guide in queryset
+    ]
 
 
 def list_category_overview_cards() -> list[CategoryOverviewCardSchema]:

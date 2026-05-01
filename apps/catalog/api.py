@@ -5,6 +5,7 @@ from typing import Any
 from ninja import Query, Router
 
 from apps.catalog.schemas import (
+    CategoryGuidePathSchema,
     CategoryOverviewCardSchema,
     CategoryPathSchema,
     CategoryProductListQuerySchema,
@@ -19,6 +20,7 @@ from apps.catalog.services import (
     get_category_guide,
     get_category_product_listing,
     get_product_detail,
+    list_category_guide_paths,
     list_category_overview_cards,
     list_category_paths,
     list_product_paths,
@@ -33,6 +35,14 @@ def get_category_paths(request: Any) -> list[CategoryPathSchema]:
     # payload 故意保持极小，避免构建期为了路由发现去拉整份分类页内容。
     del request
     return list_category_paths()
+
+
+@router.get("/categories/guide/paths", response=list[CategoryGuidePathSchema])
+def get_category_guide_paths(request: Any) -> list[CategoryGuidePathSchema]:
+    # sitemap 只需要能确认“哪些 guide 页面真实可收录”。
+    # 这个静态路径必须放在 `/categories/{slug}` 前面，避免被动态 slug 路由吞掉。
+    del request
+    return list_category_guide_paths()
 
 
 @router.get("/categories", response=list[CategoryOverviewCardSchema])
