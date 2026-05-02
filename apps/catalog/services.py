@@ -41,6 +41,7 @@ from apps.catalog.schemas import (
     CategoryGuidePathItemSchema,
     CategoryGuideResourceSchema,
     CategoryGuideTrustMetricSchema,
+    CategoryListingActiveSubcategorySchema,
     CategoryOperationalItemSchema,
     CategoryOverviewCardSchema,
     CategoryPathSchema,
@@ -715,6 +716,11 @@ def _get_published_child_categories(parent: ProductCategory) -> list[ProductCate
             "name",
             "slug",
             "url_path",
+            "h1",
+            "lead_text",
+            "seo_title",
+            "meta_description",
+            "summary",
             "parent_id",
             "operational_fit_title",
             "buyer_review_focus_title",
@@ -733,6 +739,25 @@ def _serialize_subcategory_tabs(categories: list[ProductCategory]) -> list[Subca
         )
         for category in categories
     ]
+
+
+def _serialize_listing_active_subcategory(
+    category: ProductCategory | None,
+) -> CategoryListingActiveSubcategorySchema | None:
+    if category is None:
+        return None
+
+    return CategoryListingActiveSubcategorySchema(
+        id=category.id,
+        name=category.name,
+        slug=category.slug,
+        url_path=category.url_path,
+        h1=category.h1,
+        lead_text=category.lead_text or "",
+        seo_title=category.seo_title,
+        meta_description=category.meta_description,
+        summary=category.summary or "",
+    )
 
 
 def get_category_detail(slug: str) -> ProductCategoryDetailSchema:
@@ -840,6 +865,7 @@ def get_category_product_listing(
     category = _get_published_category_or_404(slug)
     child_categories = _get_published_child_categories(category) if category.parent_id is None else []
     active_subcategory_slug: str | None = None
+    active_subcategory: ProductCategory | None = None
     subcategory_tabs: list[SubcategoryTabSchema] = []
     operational_content_category: ProductCategory | None = None
     comparison_overview: CategoryComparisonOverviewSchema | None = None
@@ -863,6 +889,7 @@ def get_category_product_listing(
                 if not selected_child:
                     raise HttpError(400, "Invalid subcategory for this category.")
                 active_subcategory_slug = selected_child.slug
+                active_subcategory = selected_child
                 operational_content_category = selected_child
                 product_filter = Q(category=selected_child)
             else:
@@ -962,6 +989,7 @@ def get_category_product_listing(
         sourcing_faq_title=sourcing_faq_title,
         sourcing_faq_items=sourcing_faq_items,
         active_subcategory_slug=active_subcategory_slug,
+        active_subcategory=_serialize_listing_active_subcategory(active_subcategory),
         subcategory_tabs=subcategory_tabs,
         pagination=_serialize_pagination(window),
         items=[_serialize_listing_item(product) for product in page_obj.object_list],

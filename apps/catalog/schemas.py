@@ -62,6 +62,20 @@ class SubcategoryTabSchema(Schema):
     product_count: int
 
 
+class CategoryListingActiveSubcategorySchema(Schema):
+    """可索引子类 tab 页面使用的页面身份字段。"""
+
+    id: int
+    name: str
+    slug: str
+    url_path: str
+    h1: str
+    lead_text: str
+    seo_title: str
+    meta_description: str
+    summary: str
+
+
 class CategoryOperationalItemSchema(Schema):
     """分类列表页 Operational Fit / Buyer Review Focus 结构化条目。"""
 
@@ -305,6 +319,7 @@ class ProductCategoryListingResponseSchema(Schema):
     sourcing_faq_title: str
     sourcing_faq_items: list[CategoryFaqItemSchema]
     active_subcategory_slug: str | None = None
+    active_subcategory: CategoryListingActiveSubcategorySchema | None = None
     subcategory_tabs: list[SubcategoryTabSchema]
     pagination: CatalogPaginationSchema
     items: list[ProductListingItemSchema]
