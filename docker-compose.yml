@@ -12,7 +12,7 @@ services:
 #    expose:
 #      - "8000"    # 只在 Docker 网络内部暴露
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8000:8000"
     volumes:
       - .:/app
       - ./staticfiles:/app/staticfiles
