@@ -5,12 +5,14 @@ services:
     build: .
     hostname: protalor-web-main
     networks:
-      edge:
-        aliases:
-          - protalor-main-web
+#      edge:
+#        aliases:
+#          - protalor-main-web
       mynet: {}
-    expose:
-      - "8000"    # 只在 Docker 网络内部暴露
+#    expose:
+#      - "8000"    # 只在 Docker 网络内部暴露
+    ports:
+      - "127.0.0.1:8000:8000"
     volumes:
       - .:/app
       - ./staticfiles:/app/staticfiles
@@ -45,7 +47,7 @@ services:
     restart: unless-stopped  # 容器异常退出会自动重启
 
 networks:  # 在从未启动的服务器内，先创建这个网络 docker network create edge，再启动docker compose up -d
-  edge:
-    external: true
+#  edge:
+#    external: true
   mynet:
     driver: bridge
