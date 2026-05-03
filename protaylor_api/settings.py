@@ -46,7 +46,7 @@ ALLOWED_HOSTS = config.get('ALLOWED_HOSTS', '').split(',') if config.get('ALLOWE
 
     # 服务器IP
     '47.237.84.36',
-    '119.23.75.208',
+    '47.107.113.3',
 ]
 
 
